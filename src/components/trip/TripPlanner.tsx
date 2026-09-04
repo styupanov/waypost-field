@@ -11,6 +11,13 @@ import type {
   TripEndpoint,
   TripField,
 } from "@/types/trip";
+import {
+  DEFAULT_TRIP_PREFERENCES,
+  type DetourTolerance,
+  type InterestCategory,
+  type StopStyle,
+  type TripPreferences,
+} from "@/types/preferences";
 
 const initialOrigin: TripEndpoint = {
   input: "Charlotte, NC",
@@ -38,6 +45,56 @@ export default function TripPlanner() {
   const [stop, setStop] = useState<TripEndpoint | null>(null);
   const [destination, setDestination] = useState(initialDestination);
   const [pickingMode, setPickingMode] = useState<PickingMode>(null);
+  const [preferences, setPreferences] = useState<TripPreferences>(() => ({
+    ...DEFAULT_TRIP_PREFERENCES,
+    preferredCategories: [],
+    excludedCategories: [],
+  }));
+
+  function updatePreferences(
+    update: (current: TripPreferences) => TripPreferences
+  ) {
+    setPreferences(update);
+    markDraftDirty();
+  }
+
+  function updatePreferredCategory(
+    category: InterestCategory,
+    selected: boolean
+  ) {
+    updatePreferences((current) => ({
+      ...current,
+      preferredCategories: selected
+        ? [...current.preferredCategories.filter((value) => value !== category), category]
+        : current.preferredCategories.filter((value) => value !== category),
+      excludedCategories: selected
+        ? current.excludedCategories.filter((value) => value !== category)
+        : current.excludedCategories,
+    }));
+  }
+
+  function updateExcludedCategory(
+    category: InterestCategory,
+    selected: boolean
+  ) {
+    updatePreferences((current) => ({
+      ...current,
+      preferredCategories: selected
+        ? current.preferredCategories.filter((value) => value !== category)
+        : current.preferredCategories,
+      excludedCategories: selected
+        ? [...current.excludedCategories.filter((value) => value !== category), category]
+        : current.excludedCategories.filter((value) => value !== category),
+    }));
+  }
+
+  function updateDetourTolerance(detourTolerance: DetourTolerance) {
+    updatePreferences((current) => ({ ...current, detourTolerance }));
+  }
+
+  function updateStopStyle(stopStyle: StopStyle) {
+    updatePreferences((current) => ({ ...current, stopStyle }));
+  }
 
   function updateEndpointInput(field: TripField, input: string) {
     const update = (current: TripEndpoint): TripEndpoint => ({
@@ -208,6 +265,7 @@ export default function TripPlanner() {
         destination={destination}
         plannerState={plannerState}
         pickingMode={pickingMode}
+        preferences={preferences}
         onInputChange={updateEndpointInput}
         onPickingModeChange={setPickingMode}
         onCoordinatesResolved={resolveEndpointCoordinates}
@@ -216,6 +274,10 @@ export default function TripPlanner() {
         onGenerationStarted={startDraftGeneration}
         onDraftBuilt={finishDraftGeneration}
         onGenerationFailed={failDraftGeneration}
+        onPreferredCategoryChange={updatePreferredCategory}
+        onExcludedCategoryChange={updateExcludedCategory}
+        onDetourToleranceChange={updateDetourTolerance}
+        onStopStyleChange={updateStopStyle}
       />
     </>
   );

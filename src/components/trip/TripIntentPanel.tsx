@@ -2,6 +2,7 @@
 
 import { FormEvent, useRef, useState } from "react";
 import DraftSummary from "@/components/trip/DraftSummary";
+import TripPreferencesPanel from "@/components/trip/TripPreferencesPanel";
 import styles from "./TripIntentPanel.module.css";
 import type {
   GeocodingResponse,
@@ -17,6 +18,12 @@ import type {
   TripEndpoint,
   TripField,
 } from "@/types/trip";
+import type {
+  DetourTolerance,
+  InterestCategory,
+  StopStyle,
+  TripPreferences,
+} from "@/types/preferences";
 
 type TripIntentPanelProps = {
   origin: TripEndpoint;
@@ -24,6 +31,7 @@ type TripIntentPanelProps = {
   destination: TripEndpoint;
   plannerState: PlannerState;
   pickingMode: PickingMode;
+  preferences: TripPreferences;
   onInputChange: (field: TripField, value: string) => void;
   onPickingModeChange: (mode: PickingMode) => void;
   onCoordinatesResolved: (
@@ -36,6 +44,10 @@ type TripIntentPanelProps = {
   onGenerationStarted: () => void;
   onDraftBuilt: (draft: TripDraft) => void;
   onGenerationFailed: () => void;
+  onPreferredCategoryChange: (category: InterestCategory, selected: boolean) => void;
+  onExcludedCategoryChange: (category: InterestCategory, selected: boolean) => void;
+  onDetourToleranceChange: (value: DetourTolerance) => void;
+  onStopStyleChange: (value: StopStyle) => void;
 };
 
 class TripBuildError extends Error {
@@ -99,6 +111,7 @@ export default function TripIntentPanel({
   destination,
   plannerState,
   pickingMode,
+  preferences,
   onInputChange,
   onPickingModeChange,
   onCoordinatesResolved,
@@ -107,6 +120,10 @@ export default function TripIntentPanel({
   onGenerationStarted,
   onDraftBuilt,
   onGenerationFailed,
+  onPreferredCategoryChange,
+  onExcludedCategoryChange,
+  onDetourToleranceChange,
+  onStopStyleChange,
 }: TripIntentPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const requestInFlight = useRef(false);
@@ -304,6 +321,15 @@ export default function TripIntentPanel({
               : "Pick destination on map"}
           </button>
         </div>
+
+        <TripPreferencesPanel
+          preferences={preferences}
+          disabled={isGenerating}
+          onPreferredCategoryChange={onPreferredCategoryChange}
+          onExcludedCategoryChange={onExcludedCategoryChange}
+          onDetourToleranceChange={onDetourToleranceChange}
+          onStopStyleChange={onStopStyleChange}
+        />
 
         <button type="submit" disabled={isGenerating || pickingMode !== null}>
           {isGenerating ? "Building route…" : "Build route"}

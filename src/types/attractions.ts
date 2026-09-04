@@ -28,5 +28,27 @@ export type AttractionOpportunity = {
 };
 
 export type AttractionOpportunitiesResponse = {
-  opportunities: AttractionOpportunity[];
+  opportunities: PersonalizedAttractionOpportunity[];
+};
+
+export type PreferenceBreakdown = {
+  category: number;
+  detourTolerance: number;
+  stopStyle: number;
+};
+
+export type VisitDuration = {
+  minimumMinutes: number | null;
+  maximumMinutes: number | null;
+};
+
+export type PersonalizedAttractionOpportunity = AttractionOpportunity & {
+  attraction: AttractionOpportunity["attraction"] & {
+    interestCategory: import("@/types/preferences").InterestCategory | null;
+    visitDuration: VisitDuration | null;
+  };
+  objectiveScore: number;
+  preferenceAdjustment: number;
+  preferenceBreakdown: PreferenceBreakdown;
+  personalizedScore: number;
 };

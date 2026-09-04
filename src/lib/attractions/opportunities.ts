@@ -8,8 +8,10 @@ import {
   type ScoredCandidate,
 } from "@/lib/attractions/scoring";
 import { calculateRoute } from "@/lib/routing/valhalla";
+import { personalizeOpportunities } from "@/lib/attractions/personalization";
 import type { AttractionOpportunitiesResponse, AttractionOpportunity } from "@/types/attractions";
 import type { RoutePoint, RouteSummary } from "@/types/route";
+import type { TripPreferences } from "@/types/preferences";
 
 export const VALHALLA_CONCURRENCY = 5;
 export const ATTRACTION_SCORING_POOL_LIMIT = 5_000;
@@ -18,6 +20,7 @@ export type OpportunityQuery = {
   locations: RoutePoint[];
   route: { type: "LineString"; coordinates: [number, number][] };
   corridorMeters: number;
+  preferences: TripPreferences;
 };
 
 function squaredDistance(left: RoutePoint, right: RoutePoint) {
@@ -84,7 +87,7 @@ function buildOpportunity(candidate: ScoredCandidate, baseline: RouteSummary, ca
   };
 }
 
-export async function findAttractionOpportunities({ locations, route, corridorMeters }: OpportunityQuery): Promise<AttractionOpportunitiesResponse> {
+export async function findAttractionOpportunities({ locations, route, corridorMeters, preferences }: OpportunityQuery): Promise<AttractionOpportunitiesResponse> {
   const [candidateResult, datasetMeanRating] = await Promise.all([
     findAttractionCandidates({
       route,
@@ -104,8 +107,11 @@ export async function findAttractionOpportunities({ locations, route, corridorMe
   });
 
   return {
-    opportunities: evaluated
+    opportunities: personalizeOpportunities(
+      evaluated
       .filter((value): value is AttractionOpportunity => value !== null)
       .sort((left, right) => right.score - left.score || left.attraction.id - right.attraction.id),
+      preferences
+    ),
   };
 }

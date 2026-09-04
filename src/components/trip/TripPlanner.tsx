@@ -5,6 +5,7 @@ import { getSession, signOut } from "next-auth/react";
 import MapCanvas from "@/components/map/MapCanvas";
 import AlongTheWay from "@/components/trip/AlongTheWay";
 import LocalSignInDialog from "@/components/trip/LocalSignInDialog";
+import MyTripsDrawer from "@/components/trip/MyTripsDrawer";
 import TripIntentPanel from "@/components/trip/TripIntentPanel";
 import type {
   Coordinates,
@@ -59,7 +60,8 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
   const [sessionUser, setSessionUser] = useState<PlannerSession>(initialSession);
   const [ownedTripId, setOwnedTripId] = useState<string | null>(null);
   const [ownershipStatus, setOwnershipStatus] = useState<"unsaved" | "saving" | "saved" | "error">("unsaved");
-  const [showSignIn, setShowSignIn] = useState(false);
+  const [authPurpose, setAuthPurpose] = useState<"save" | "trips" | "open-trip" | null>(null);
+  const [isMyTripsOpen, setIsMyTripsOpen] = useState(false);
   const [savedTripState, setSavedTripState] = useState<"idle" | "loading" | "forbidden" | "error">(
     requestedTripId ? (initialSession ? "loading" : "forbidden") : "idle"
   );
@@ -361,12 +363,12 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
     const response = await fetch("/api/trips", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft: visibleDraft }) });
     if (!response.ok) { setOwnershipStatus("error"); throw new Error("Trip save failed"); }
     const data = await response.json() as { tripId: string };
-    setOwnedTripId(data.tripId); setOwnershipStatus("saved"); setShowSignIn(false);
+    setOwnedTripId(data.tripId); setOwnershipStatus("saved"); setAuthPurpose(null);
     window.history.replaceState(null, "", `/?trip=${data.tripId}`);
   }
 
   function requestSave() {
-    if (!sessionUser) { setShowSignIn(true); return; }
+    if (!sessionUser) { setAuthPurpose("save"); return; }
     void persistCurrentDraft().catch(() => undefined);
   }
 
@@ -472,10 +474,14 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
         />
       ) : null}
       {findingAlternatives ? <div className="finding-places" role="status">Finding places along the way…</div> : null}
-      {sessionUser ? <div className="account-control"><span>{sessionUser.name || sessionUser.email}</span><button onClick={() => void signOut({ redirectTo: ownedTripId ? `/?trip=${ownedTripId}` : "/" })}>Sign out</button></div> : null}
-      {showSignIn ? <LocalSignInDialog onCancel={() => setShowSignIn(false)} onAuthenticated={async () => { const session = await getSession(); setSessionUser(session?.user ?? null); if (!requestedTripId || visibleDraft) await persistCurrentDraft(); else setShowSignIn(false); }} /> : null}
+      <div className="account-control">
+        <button onClick={() => { if (sessionUser) setIsMyTripsOpen(true); else setAuthPurpose("trips"); }}>My Trips</button>
+        {sessionUser ? <><span>{sessionUser.name || sessionUser.email}</span><button onClick={() => void signOut({ redirectTo: ownedTripId ? `/?trip=${ownedTripId}` : "/" })}>Sign out</button></> : null}
+      </div>
+      <MyTripsDrawer open={isMyTripsOpen && Boolean(sessionUser)} currentTripId={ownedTripId ?? requestedTripId} onClose={() => setIsMyTripsOpen(false)} />
+      {authPurpose ? <LocalSignInDialog onCancel={() => setAuthPurpose(null)} onAuthenticated={async () => { const purpose = authPurpose; const session = await getSession(); setSessionUser(session?.user ?? null); setAuthPurpose(null); if (purpose === "save") await persistCurrentDraft(); else if (purpose === "trips") setIsMyTripsOpen(true); }} /> : null}
       {savedTripState === "loading" ? <div className="load-gate">Loading saved trip…</div> : null}
-      {savedTripState === "forbidden" ? <div className="load-gate"><div><p>{sessionUser ? "You don't have access to this saved trip." : "Sign in to open this saved trip."}</p>{!sessionUser ? <button onClick={() => setShowSignIn(true)}>Sign in</button> : null}</div></div> : null}
+      {savedTripState === "forbidden" ? <div className="load-gate"><div><p>{sessionUser ? "You don't have access to this saved trip." : "Sign in to open this saved trip."}</p>{!sessionUser ? <button onClick={() => setAuthPurpose("open-trip")}>Sign in</button> : null}</div></div> : null}
       {savedTripState === "error" ? <div className="load-gate">The saved trip could not be loaded.</div> : null}
     </>
   );

@@ -61,3 +61,16 @@ export type PersistedTrip = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type TripListItem = {
+  id: string;
+  status: PersistedTripStatus;
+  currentVersionId: string | null;
+  versionState: PersistedTripVersionState | null;
+  originLabel: string | null;
+  destinationLabel: string | null;
+  attractionStopCount: number;
+  preferences: TripPreferences | null;
+  createdAt: string;
+  updatedAt: string;
+};

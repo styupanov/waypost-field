@@ -14,6 +14,7 @@ import type {
   PersistedTripStop,
   PersistedTripVersion,
   PersistedTripVersionState,
+  TripListItem,
 } from "@/types/trip-persistence";
 import type { RouteSummary } from "@/types/route";
 
@@ -333,6 +334,41 @@ export async function getCurrentTripVersion(tripId: string) {
   if (!trip) throw new TripPersistenceError("TRIP_NOT_FOUND", "Trip was not found.");
   if (!trip.currentVersion) throw new TripPersistenceError("CURRENT_VERSION_NOT_FOUND", "Trip has no current version.");
   return trip.currentVersion;
+}
+
+type TripListRow = {
+  id: string; status: "draft"; current_version_id: string | null;
+  version_state: PersistedTripVersionState | null;
+  preferences: PersistedTripVersion["preferences"] | null;
+  origin_label: string | null; destination_label: string | null;
+  attraction_stop_count: string; created_at: Date; updated_at: Date;
+};
+
+export async function listTripsForUser(userId: string): Promise<TripListItem[]> {
+  assertUuid(userId);
+  const result = await getPostgresPool().query<TripListRow>(
+    `SELECT t.id, t.status, t.current_version_id,
+       v.state AS version_state, v.preferences,
+       MAX(s.label) FILTER (WHERE s.stop_type = 'origin') AS origin_label,
+       MAX(s.label) FILTER (WHERE s.stop_type = 'destination') AS destination_label,
+       COUNT(*) FILTER (WHERE s.stop_type = 'attraction') AS attraction_stop_count,
+       t.created_at, t.updated_at
+     FROM public.trips t
+     LEFT JOIN public.trip_versions v ON v.id = t.current_version_id
+     LEFT JOIN public.trip_stops s ON s.trip_version_id = v.id
+     WHERE t.user_id = $1
+     GROUP BY t.id, v.id
+     ORDER BY t.updated_at DESC, t.id DESC
+     LIMIT 200`,
+    [userId]
+  );
+  return result.rows.map((row) => ({
+    id: row.id, status: row.status, currentVersionId: row.current_version_id,
+    versionState: row.version_state, originLabel: row.origin_label,
+    destinationLabel: row.destination_label,
+    attractionStopCount: Number(row.attraction_stop_count), preferences: row.preferences,
+    createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(),
+  }));
 }
 
 export async function getOwnedTrip(userId: string, tripId: string) {

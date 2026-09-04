@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server";
 import { authenticatedWaypostUserId } from "@/lib/auth/session";
-import { createTripWithDraft } from "@/lib/trips/repository";
+import { createTripWithDraft, listTripsForUser } from "@/lib/trips/repository";
 import type { TripDraft } from "@/types/trip";
+
+export async function GET() {
+  const userId = await authenticatedWaypostUserId();
+  if (!userId) return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "Sign in is required." } }, { status: 401 });
+  try {
+    return NextResponse.json({ trips: await listTripsForUser(userId) });
+  } catch (error) {
+    console.error("Failed to list owned trips.", error);
+    return NextResponse.json({ error: { code: "TRIP_LIST_FAILED", message: "Saved trips could not be loaded." } }, { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   const userId = await authenticatedWaypostUserId();

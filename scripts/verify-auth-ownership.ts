@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getPostgresPool } from "../src/lib/db/postgres.ts";
 import { resolveWaypostUserId } from "../src/lib/users/identity.ts";
-import { createTripWithDraft, getOwnedTrip, saveOwnedCurrentDraftVersion } from "../src/lib/trips/repository.ts";
+import { createTripWithDraft, getOwnedTrip, listTripsForUser, saveOwnedCurrentDraftVersion } from "../src/lib/trips/repository.ts";
 import type { TripDraft } from "../src/types/trip.ts";
 
 const suffix = randomUUID();
@@ -32,8 +32,10 @@ try {
   const versionId = trip.currentVersion.id;
   const ownerCanRead = Boolean(await getOwnedTrip(userA, tripId));
   const otherUserCanRead = Boolean(await getOwnedTrip(userB, tripId));
+  const [userATrips, userBTrips] = await Promise.all([listTripsForUser(userA), listTripsForUser(userB)]);
   const saved = await saveOwnedCurrentDraftVersion(userA, tripId, draft);
-  console.log(JSON.stringify({ repeatedIdentityStable: userA === repeatedA, ownerCanRead, otherUserDenied: !otherUserCanRead, sameTripVersion: saved.id === versionId, versionNo: saved.versionNo }, null, 2));
+  const listPayloadHasRouteGeometry = Object.hasOwn(userATrips[0] ?? {}, "route");
+  console.log(JSON.stringify({ repeatedIdentityStable: userA === repeatedA, ownerCanRead, otherUserDenied: !otherUserCanRead, userATripCount: userATrips.length, userBTripCount: userBTrips.length, listIsolation: userATrips.length === 1 && userBTrips.length === 0, listPayloadHasRouteGeometry, sameTripVersion: saved.id === versionId, versionNo: saved.versionNo }, null, 2));
 } finally {
   if (tripId) await pool.query("DELETE FROM public.trips WHERE id=$1", [tripId]);
   if (userA || userB) await pool.query("DELETE FROM public.users WHERE id = ANY($1::uuid[])", [[userA, userB].filter(Boolean)]);

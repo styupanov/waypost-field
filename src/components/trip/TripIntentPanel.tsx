@@ -7,16 +7,29 @@ import type {
   GeocodingResult,
 } from "@/types/geocoding";
 import type { RouteFeature } from "@/types/route";
+import type {
+  Coordinates,
+  PickingMode,
+  TripEndpoint,
+  TripField,
+} from "@/types/trip";
 
 type TripIntentPanelProps = {
+  origin: TripEndpoint;
+  destination: TripEndpoint;
+  pickingMode: PickingMode;
+  onInputChange: (field: TripField, value: string) => void;
+  onPickingModeChange: (mode: PickingMode) => void;
+  onCoordinatesResolved: (
+    field: TripField,
+    coordinates: Coordinates
+  ) => void;
   onRouteBuilt: (route: RouteFeature) => void;
 };
 
 type RouteResponse = {
   route: RouteFeature;
 };
-
-type TripField = "origin" | "destination";
 
 class TripBuildError extends Error {
   constructor(message: string) {
@@ -55,11 +68,30 @@ async function geocodePlace(
   return result;
 }
 
+async function resolveEndpoint(
+  endpoint: TripEndpoint,
+  field: TripField,
+  onCoordinatesResolved: TripIntentPanelProps["onCoordinatesResolved"]
+): Promise<Coordinates> {
+  if (endpoint.coordinates) {
+    return endpoint.coordinates;
+  }
+
+  const result = await geocodePlace(endpoint.input.trim(), field);
+  const coordinates = { lat: result.lat, lon: result.lon };
+  onCoordinatesResolved(field, coordinates);
+  return coordinates;
+}
+
 export default function TripIntentPanel({
+  origin,
+  destination,
+  pickingMode,
+  onInputChange,
+  onPickingModeChange,
+  onCoordinatesResolved,
   onRouteBuilt,
 }: TripIntentPanelProps) {
-  const [origin, setOrigin] = useState("Charlotte, NC");
-  const [destination, setDestination] = useState("Denver, CO");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,21 +99,23 @@ export default function TripIntentPanel({
     event.preventDefault();
     setError(null);
 
-    const trimmedOrigin = origin.trim();
-    const trimmedDestination = destination.trim();
-
-    if (!trimmedOrigin || !trimmedDestination) {
-      setError("Enter both an origin and a destination.");
+    if (!origin.input.trim() || !destination.input.trim()) {
+      setError("Enter or select both an origin and a destination.");
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const originResult = await geocodePlace(trimmedOrigin, "origin");
-      const destinationResult = await geocodePlace(
-        trimmedDestination,
-        "destination"
+      const originCoordinates = await resolveEndpoint(
+        origin,
+        "origin",
+        onCoordinatesResolved
+      );
+      const destinationCoordinates = await resolveEndpoint(
+        destination,
+        "destination",
+        onCoordinatesResolved
       );
 
       const response = await fetch("/api/route", {
@@ -90,16 +124,13 @@ export default function TripIntentPanel({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          locations: [
-            { lat: originResult.lat, lon: originResult.lon },
-            { lat: destinationResult.lat, lon: destinationResult.lon },
-          ],
+          locations: [originCoordinates, destinationCoordinates],
         }),
       });
 
       if (!response.ok) {
         throw new TripBuildError(
-          "The places were found, but routing failed. Please try again."
+          "The endpoints are set, but routing failed. Please try again."
         );
       }
 
@@ -117,31 +148,65 @@ export default function TripIntentPanel({
     }
   }
 
+  function togglePickingMode(field: TripField) {
+    onPickingModeChange(pickingMode === field ? null : field);
+  }
+
   return (
     <section className={styles.panel} aria-labelledby="trip-intent-heading">
       <h1 id="trip-intent-heading">Trip intent</h1>
       <form onSubmit={handleSubmit}>
-        <label className={styles.placeField}>
-          Origin
-          <input
-            name="origin"
-            value={origin}
+        <div className={styles.endpointField}>
+          <label className={styles.placeField}>
+            Origin
+            <input
+              name="origin"
+              value={origin.input}
+              disabled={isLoading}
+              onChange={(event) =>
+                onInputChange("origin", event.target.value)
+              }
+            />
+          </label>
+          <button
+            className={styles.pickButton}
+            type="button"
             disabled={isLoading}
-            onChange={(event) => setOrigin(event.target.value)}
-          />
-        </label>
+            aria-pressed={pickingMode === "origin"}
+            onClick={() => togglePickingMode("origin")}
+          >
+            {pickingMode === "origin"
+              ? "Click map for start"
+              : "Pick start on map"}
+          </button>
+        </div>
 
-        <label className={styles.placeField}>
-          Destination
-          <input
-            name="destination"
-            value={destination}
+        <div className={styles.endpointField}>
+          <label className={styles.placeField}>
+            Destination
+            <input
+              name="destination"
+              value={destination.input}
+              disabled={isLoading}
+              onChange={(event) =>
+                onInputChange("destination", event.target.value)
+              }
+            />
+          </label>
+          <button
+            className={styles.pickButton}
+            type="button"
             disabled={isLoading}
-            onChange={(event) => setDestination(event.target.value)}
-          />
-        </label>
+            aria-pressed={pickingMode === "destination"}
+            onClick={() => togglePickingMode("destination")}
+          >
+            {pickingMode === "destination"
+              ? "Click map for destination"
+              : "Pick destination on map"}
+          </button>
+        </div>
 
-        <button type="submit" disabled={isLoading}>
+        <button type="submit" disabled={isLoading || pickingMode !== null}>
           {isLoading ? "Building route…" : "Build route"}
         </button>
 

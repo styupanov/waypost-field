@@ -4,11 +4,20 @@ import { useEffect, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { RouteFeature } from "@/types/route";
+import type {
+  Coordinates,
+  PickingMode,
+  TripField,
+} from "@/types/trip";
 
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
 type MapCanvasProps = {
   route: RouteFeature | null;
+  originCoordinates: Coordinates | null;
+  destinationCoordinates: Coordinates | null;
+  pickingMode: PickingMode;
+  onMapPointSelected: (field: TripField, coordinates: Coordinates) => void;
 };
 
 const ROUTE_SOURCE_ID = "route";
@@ -55,9 +64,40 @@ function renderRoute(map: maplibregl.Map, route: RouteFeature) {
   });
 }
 
-export default function MapCanvas({ route }: MapCanvasProps) {
+function updateMarker(
+  map: maplibregl.Map,
+  markerRef: React.MutableRefObject<maplibregl.Marker | null>,
+  coordinates: Coordinates | null,
+  color: string
+) {
+  if (!coordinates) {
+    markerRef.current?.remove();
+    markerRef.current = null;
+    return;
+  }
+
+  const lngLat: [number, number] = [coordinates.lon, coordinates.lat];
+
+  if (markerRef.current) {
+    markerRef.current.setLngLat(lngLat);
+  } else {
+    markerRef.current = new maplibregl.Marker({ color })
+      .setLngLat(lngLat)
+      .addTo(map);
+  }
+}
+
+export default function MapCanvas({
+  route,
+  originCoordinates,
+  destinationCoordinates,
+  pickingMode,
+  onMapPointSelected,
+}: MapCanvasProps) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const map = useRef<maplibregl.Map | null>(null);
+  const originMarker = useRef<maplibregl.Marker | null>(null);
+  const destinationMarker = useRef<maplibregl.Marker | null>(null);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) {
@@ -83,6 +123,10 @@ export default function MapCanvas({ route }: MapCanvasProps) {
     );
 
     return () => {
+      originMarker.current?.remove();
+      destinationMarker.current?.remove();
+      originMarker.current = null;
+      destinationMarker.current = null;
       mapInstance.remove();
       map.current = null;
     };
@@ -107,6 +151,60 @@ export default function MapCanvas({ route }: MapCanvasProps) {
       mapInstance.off("load", handleLoad);
     };
   }, [route]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+
+    if (!mapInstance) {
+      return;
+    }
+
+    updateMarker(mapInstance, originMarker, originCoordinates, "#15803d");
+  }, [originCoordinates]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+
+    if (!mapInstance) {
+      return;
+    }
+
+    updateMarker(
+      mapInstance,
+      destinationMarker,
+      destinationCoordinates,
+      "#b42318"
+    );
+  }, [destinationCoordinates]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+
+    if (!mapInstance) {
+      return;
+    }
+
+    const canvas = mapInstance.getCanvas();
+    canvas.style.cursor = pickingMode ? "crosshair" : "";
+
+    if (!pickingMode) {
+      return;
+    }
+
+    const handleMapClick = (event: maplibregl.MapMouseEvent) => {
+      onMapPointSelected(pickingMode, {
+        lat: event.lngLat.lat,
+        lon: event.lngLat.lng,
+      });
+    };
+
+    mapInstance.once("click", handleMapClick);
+
+    return () => {
+      mapInstance.off("click", handleMapClick);
+      canvas.style.cursor = "";
+    };
+  }, [onMapPointSelected, pickingMode]);
 
   return <div ref={mapContainer} className="map-canvas" />;
 }

@@ -24,6 +24,11 @@
   gap: 14px;
 }
 
+.endpointField {
+  display: grid;
+  gap: 7px;
+}
+
 .placeField {
   display: grid;
   gap: 5px;
@@ -65,6 +70,23 @@
 .panel button:disabled {
   cursor: wait;
   opacity: 0.7;
+}
+
+.panel .pickButton {
+  width: fit-content;
+  padding: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.panel .pickButton[aria-pressed="true"] {
+  color: #9f1239;
+}
+
+.panel .pickButton:disabled {
+  cursor: wait;
 }
 
 .error {

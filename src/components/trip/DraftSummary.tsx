@@ -18,9 +18,19 @@ export default function DraftSummary({ draft, isDirty }: DraftSummaryProps) {
         <span>Approximate</span>
       </div>
 
-      <p className={styles.draftRoute}>
+      <p
+        className={`${styles.draftRoute} ${
+          draft.stop ? styles.draftRouteWithStop : ""
+        }`}
+      >
         <span>{draft.origin.label}</span>
-        <span aria-hidden="true">→</span>
+        <span aria-hidden="true">{draft.stop ? "↓" : "→"}</span>
+        {draft.stop ? (
+          <>
+            <span>{draft.stop.label}</span>
+            <span aria-hidden="true">↓</span>
+          </>
+        ) : null}
         <span>{draft.destination.label}</span>
       </p>
 

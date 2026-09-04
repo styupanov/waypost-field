@@ -89,6 +89,29 @@
   cursor: wait;
 }
 
+.stopActions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.panel .addButton,
+.panel .removeButton {
+  width: fit-content;
+  padding: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.panel .addButton {
+  color: #1d4ed8;
+}
+
+.panel .removeButton {
+  color: #b42318;
+}
+
 .error {
   margin: 0;
   color: #b42318;
@@ -134,6 +157,19 @@
 
 .draftRoute span:last-child {
   text-align: right;
+}
+
+.draftRouteWithStop {
+  grid-template-columns: minmax(0, 1fr);
+  text-align: left;
+}
+
+.draftRouteWithStop span:nth-child(even) {
+  padding-left: 8px;
+}
+
+.draftRouteWithStop span:last-child {
+  text-align: left;
 }
 
 .draftMetrics {

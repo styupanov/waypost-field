@@ -14,7 +14,7 @@ export type TripEndpoint = {
   source: TripEndpointSource;
 };
 
-export type TripField = "origin" | "destination";
+export type TripField = "origin" | "stop" | "destination";
 export type PickingMode = TripField | null;
 
 export type DraftEndpoint = {
@@ -24,6 +24,7 @@ export type DraftEndpoint = {
 
 export type TripDraft = {
   origin: DraftEndpoint;
+  stop: DraftEndpoint | null;
   destination: DraftEndpoint;
   route: RouteFeature;
   summary: RouteSummary;

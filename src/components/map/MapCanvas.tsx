@@ -15,6 +15,7 @@ maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 type MapCanvasProps = {
   route: RouteFeature | null;
   originCoordinates: Coordinates | null;
+  stopCoordinates: Coordinates | null;
   destinationCoordinates: Coordinates | null;
   pickingMode: PickingMode;
   onMapPointSelected: (field: TripField, coordinates: Coordinates) => void;
@@ -90,6 +91,7 @@ function updateMarker(
 export default function MapCanvas({
   route,
   originCoordinates,
+  stopCoordinates,
   destinationCoordinates,
   pickingMode,
   onMapPointSelected,
@@ -97,6 +99,7 @@ export default function MapCanvas({
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const originMarker = useRef<maplibregl.Marker | null>(null);
+  const stopMarker = useRef<maplibregl.Marker | null>(null);
   const destinationMarker = useRef<maplibregl.Marker | null>(null);
 
   useEffect(() => {
@@ -124,8 +127,10 @@ export default function MapCanvas({
 
     return () => {
       originMarker.current?.remove();
+      stopMarker.current?.remove();
       destinationMarker.current?.remove();
       originMarker.current = null;
+      stopMarker.current = null;
       destinationMarker.current = null;
       mapInstance.remove();
       map.current = null;
@@ -161,6 +166,16 @@ export default function MapCanvas({
 
     updateMarker(mapInstance, originMarker, originCoordinates, "#15803d");
   }, [originCoordinates]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+
+    if (!mapInstance) {
+      return;
+    }
+
+    updateMarker(mapInstance, stopMarker, stopCoordinates, "#d97706");
+  }, [stopCoordinates]);
 
   useEffect(() => {
     const mapInstance = map.current;

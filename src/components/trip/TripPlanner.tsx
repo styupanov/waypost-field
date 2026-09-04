@@ -35,6 +35,7 @@ export default function TripPlanner() {
     status: "trip_intent",
   });
   const [origin, setOrigin] = useState(initialOrigin);
+  const [stop, setStop] = useState<TripEndpoint | null>(null);
   const [destination, setDestination] = useState(initialDestination);
   const [pickingMode, setPickingMode] = useState<PickingMode>(null);
 
@@ -47,10 +48,16 @@ export default function TripPlanner() {
       source: "text",
     });
 
-    if (field === "origin") {
-      setOrigin(update);
-    } else {
-      setDestination(update);
+    switch (field) {
+      case "origin":
+        setOrigin(update);
+        break;
+      case "stop":
+        setStop((current) => (current ? update(current) : current));
+        break;
+      case "destination":
+        setDestination(update);
+        break;
     }
 
     markDraftDirty();
@@ -68,10 +75,16 @@ export default function TripPlanner() {
       source: "text",
     });
 
-    if (field === "origin") {
-      setOrigin(update);
-    } else {
-      setDestination(update);
+    switch (field) {
+      case "origin":
+        setOrigin(update);
+        break;
+      case "stop":
+        setStop((current) => (current ? update(current) : current));
+        break;
+      case "destination":
+        setDestination(update);
+        break;
     }
   }
 
@@ -83,14 +96,36 @@ export default function TripPlanner() {
       source: "map",
     };
 
-    if (field === "origin") {
-      setOrigin(endpoint);
-    } else {
-      setDestination(endpoint);
+    switch (field) {
+      case "origin":
+        setOrigin(endpoint);
+        break;
+      case "stop":
+        setStop(endpoint);
+        break;
+      case "destination":
+        setDestination(endpoint);
+        break;
     }
 
     setPickingMode(null);
 
+    markDraftDirty();
+  }
+
+  function addStop() {
+    setStop({
+      input: "",
+      coordinates: null,
+      resolvedLabel: null,
+      source: "text",
+    });
+    markDraftDirty();
+  }
+
+  function removeStop() {
+    setStop(null);
+    setPickingMode((current) => (current === "stop" ? null : current));
     markDraftDirty();
   }
 
@@ -162,18 +197,22 @@ export default function TripPlanner() {
       <MapCanvas
         route={visibleDraft?.route ?? null}
         originCoordinates={origin.coordinates}
+        stopCoordinates={stop?.coordinates ?? null}
         destinationCoordinates={destination.coordinates}
         pickingMode={pickingMode}
         onMapPointSelected={selectMapPoint}
       />
       <TripIntentPanel
         origin={origin}
+        stop={stop}
         destination={destination}
         plannerState={plannerState}
         pickingMode={pickingMode}
         onInputChange={updateEndpointInput}
         onPickingModeChange={setPickingMode}
         onCoordinatesResolved={resolveEndpointCoordinates}
+        onAddStop={addStop}
+        onRemoveStop={removeStop}
         onGenerationStarted={startDraftGeneration}
         onDraftBuilt={finishDraftGeneration}
         onGenerationFailed={failDraftGeneration}

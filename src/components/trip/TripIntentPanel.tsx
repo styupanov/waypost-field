@@ -20,6 +20,7 @@ import type {
 
 type TripIntentPanelProps = {
   origin: TripEndpoint;
+  stop: TripEndpoint | null;
   destination: TripEndpoint;
   plannerState: PlannerState;
   pickingMode: PickingMode;
@@ -30,6 +31,8 @@ type TripIntentPanelProps = {
     coordinates: Coordinates,
     resolvedLabel: string
   ) => void;
+  onAddStop: () => void;
+  onRemoveStop: () => void;
   onGenerationStarted: () => void;
   onDraftBuilt: (draft: TripDraft) => void;
   onGenerationFailed: () => void;
@@ -92,12 +95,15 @@ async function resolveEndpoint(
 
 export default function TripIntentPanel({
   origin,
+  stop,
   destination,
   plannerState,
   pickingMode,
   onInputChange,
   onPickingModeChange,
   onCoordinatesResolved,
+  onAddStop,
+  onRemoveStop,
   onGenerationStarted,
   onDraftBuilt,
   onGenerationFailed,
@@ -127,8 +133,12 @@ export default function TripIntentPanel({
 
     setError(null);
 
-    if (!origin.input.trim() || !destination.input.trim()) {
-      setError("Enter or select both an origin and a destination.");
+    if (
+      !origin.input.trim() ||
+      (stop && !stop.input.trim()) ||
+      !destination.input.trim()
+    ) {
+      setError("Enter or select every trip location.");
       return;
     }
 
@@ -141,6 +151,9 @@ export default function TripIntentPanel({
         "origin",
         onCoordinatesResolved
       );
+      const resolvedStop = stop
+        ? await resolveEndpoint(stop, "stop", onCoordinatesResolved)
+        : null;
       const resolvedDestination = await resolveEndpoint(
         destination,
         "destination",
@@ -155,6 +168,7 @@ export default function TripIntentPanel({
         body: JSON.stringify({
           locations: [
             resolvedOrigin.coordinates,
+            ...(resolvedStop ? [resolvedStop.coordinates] : []),
             resolvedDestination.coordinates,
           ],
         }),
@@ -169,6 +183,7 @@ export default function TripIntentPanel({
       const data = (await response.json()) as RouteResponse;
       onDraftBuilt({
         origin: resolvedOrigin,
+        stop: resolvedStop,
         destination: resolvedDestination,
         route: data.route,
         summary: data.summary,
@@ -218,6 +233,52 @@ export default function TripIntentPanel({
               : "Pick start on map"}
           </button>
         </div>
+
+        {stop ? (
+          <div className={styles.endpointField}>
+            <label className={styles.placeField}>
+              Stop
+              <input
+                name="stop"
+                value={stop.input}
+                disabled={isGenerating}
+                onChange={(event) =>
+                  onInputChange("stop", event.target.value)
+                }
+              />
+            </label>
+            <div className={styles.stopActions}>
+              <button
+                className={styles.pickButton}
+                type="button"
+                disabled={isGenerating}
+                aria-pressed={pickingMode === "stop"}
+                onClick={() => togglePickingMode("stop")}
+              >
+                {pickingMode === "stop"
+                  ? "Click map for stop"
+                  : "Pick stop on map"}
+              </button>
+              <button
+                className={styles.removeButton}
+                type="button"
+                disabled={isGenerating}
+                onClick={onRemoveStop}
+              >
+                Remove stop
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            className={styles.addButton}
+            type="button"
+            disabled={isGenerating}
+            onClick={onAddStop}
+          >
+            Add stop
+          </button>
+        )}
 
         <div className={styles.endpointField}>
           <label className={styles.placeField}>

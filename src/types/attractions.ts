@@ -29,6 +29,17 @@ export type AttractionOpportunity = {
 
 export type AttractionOpportunitiesResponse = {
   opportunities: PersonalizedAttractionOpportunity[];
+  candidateRoutesEvaluated: number;
+  diagnostics: OpportunityDiagnostics;
+};
+
+export type OpportunityDiagnostics = {
+  corridorCandidateCount: number;
+  candidateCountConsidered: number;
+  candidatesAfterDeduplication: number;
+  duplicatesRemoved: number;
+  shortlistSize: number;
+  candidatePoolTruncated: boolean;
 };
 
 export type PreferenceBreakdown = {

@@ -11,7 +11,7 @@ import {
 import { calculateRoute } from "@/lib/routing/valhalla";
 import { personalizeOpportunities } from "@/lib/attractions/personalization";
 import type { AttractionOpportunitiesResponse, AttractionOpportunity } from "@/types/attractions";
-import type { RoutePoint, RouteSummary } from "@/types/route";
+import type { RoutePoint, RouteResponse, RouteSummary } from "@/types/route";
 import type { TripPreferences } from "@/types/preferences";
 
 export const VALHALLA_CONCURRENCY = 5;
@@ -22,6 +22,10 @@ export type OpportunityQuery = {
   route: { type: "LineString"; coordinates: [number, number][] };
   corridorMeters: number;
   preferences: TripPreferences;
+};
+
+type OpportunityOptions = {
+  baselineRoute?: RouteResponse;
 };
 
 function squaredDistance(left: RoutePoint, right: RoutePoint) {
@@ -88,7 +92,10 @@ function buildOpportunity(candidate: ScoredCandidate, baseline: RouteSummary, ca
   };
 }
 
-export async function findAttractionOpportunities({ locations, route, corridorMeters, preferences }: OpportunityQuery): Promise<AttractionOpportunitiesResponse> {
+export async function findAttractionOpportunities(
+  { locations, route, corridorMeters, preferences }: OpportunityQuery,
+  options: OpportunityOptions = {}
+): Promise<AttractionOpportunitiesResponse> {
   const [candidateResult, datasetMeanRating] = await Promise.all([
     findAttractionCandidates({
       route,
@@ -105,9 +112,23 @@ export async function findAttractionOpportunities({ locations, route, corridorMe
     datasetMeanRating,
     corridorMeters
   );
-  if (shortlist.length === 0) return { opportunities: [] };
+  if (shortlist.length === 0) {
+    return {
+      opportunities: [],
+      candidateRoutesEvaluated: 0,
+      diagnostics: {
+        corridorCandidateCount: candidateResult.totalCount,
+        candidateCountConsidered: candidateResult.candidates.length,
+        candidatesAfterDeduplication:
+          deduplicated.candidateCountAfterDedup,
+        duplicatesRemoved: deduplicated.duplicatesRemoved,
+        shortlistSize: 0,
+        candidatePoolTruncated: candidateResult.truncated,
+      },
+    };
+  }
 
-  const baseline = await calculateRoute(locations);
+  const baseline = options.baselineRoute ?? (await calculateRoute(locations));
   const evaluated = await mapWithConcurrency(shortlist, VALHALLA_CONCURRENCY, async (candidate) => {
     const candidateLocations = insertAttractionPreservingStops(locations, { lat: candidate.lat, lon: candidate.lon });
     const candidateRoute = await calculateRoute(candidateLocations);
@@ -121,5 +142,15 @@ export async function findAttractionOpportunities({ locations, route, corridorMe
       .sort((left, right) => right.score - left.score || left.attraction.id - right.attraction.id),
       preferences
     ),
+    candidateRoutesEvaluated: shortlist.length,
+    diagnostics: {
+      corridorCandidateCount: candidateResult.totalCount,
+      candidateCountConsidered: candidateResult.candidates.length,
+      candidatesAfterDeduplication:
+        deduplicated.candidateCountAfterDedup,
+      duplicatesRemoved: deduplicated.duplicatesRemoved,
+      shortlistSize: shortlist.length,
+      candidatePoolTruncated: candidateResult.truncated,
+    },
   };
 }

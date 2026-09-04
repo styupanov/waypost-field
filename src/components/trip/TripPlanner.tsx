@@ -253,6 +253,9 @@ export default function TripPlanner() {
     <>
       <MapCanvas
         route={visibleDraft?.route ?? null}
+        waypostStops={
+          visibleDraft?.stops.filter((item) => item.source === "waypost") ?? []
+        }
         originCoordinates={origin.coordinates}
         stopCoordinates={stop?.coordinates ?? null}
         destinationCoordinates={destination.coordinates}

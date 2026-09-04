@@ -4,11 +4,7 @@ import { findAttractionOpportunities, type OpportunityQuery } from "@/lib/attrac
 import { DatabaseConfigurationError } from "@/lib/db/postgres";
 import { RoutingServiceError } from "@/lib/routing/valhalla";
 import type { RoutePoint } from "@/types/route";
-import {
-  DEFAULT_TRIP_PREFERENCES,
-  type InterestCategory,
-  type TripPreferences,
-} from "@/types/preferences";
+import { parseTripPreferences } from "@/lib/trip/preferences-validation";
 
 const MAX_CORRIDOR_METERS = 100_000;
 
@@ -24,59 +20,10 @@ function parsePoint(value: unknown): RoutePoint | null {
   return { lat, lon };
 }
 
-const INTEREST_CATEGORIES: InterestCategory[] = [
-  "nature_scenic",
-  "outdoor_adventure",
-  "history_landmarks",
-  "museums_culture",
-  "food_drink",
-  "shopping",
-];
-
-function parsePreferences(value: unknown): TripPreferences | null {
-  if (value === undefined) {
-    return {
-      ...DEFAULT_TRIP_PREFERENCES,
-      preferredCategories: [],
-      excludedCategories: [],
-    };
-  }
-  if (!isRecord(value)) return null;
-
-  const {
-    preferredCategories,
-    excludedCategories,
-    detourTolerance,
-    stopStyle,
-  } = value;
-  if (
-    !Array.isArray(preferredCategories) ||
-    !Array.isArray(excludedCategories) ||
-    !preferredCategories.every((category) =>
-      INTEREST_CATEGORIES.includes(category as InterestCategory)
-    ) ||
-    !excludedCategories.every((category) =>
-      INTEREST_CATEGORIES.includes(category as InterestCategory)
-    ) ||
-    new Set(preferredCategories).size !== preferredCategories.length ||
-    new Set(excludedCategories).size !== excludedCategories.length ||
-    preferredCategories.some((category) => excludedCategories.includes(category)) ||
-    !["low", "balanced", "high"].includes(detourTolerance as string) ||
-    !["quick", "balanced", "longer"].includes(stopStyle as string)
-  ) return null;
-
-  return {
-    preferredCategories: preferredCategories as InterestCategory[],
-    excludedCategories: excludedCategories as InterestCategory[],
-    detourTolerance: detourTolerance as TripPreferences["detourTolerance"],
-    stopStyle: stopStyle as TripPreferences["stopStyle"],
-  };
-}
-
 function validateRequest(body: unknown): OpportunityQuery | null {
   if (!isRecord(body) || !isRecord(body.route)) return null;
   const { locations, route, corridorMeters } = body;
-  const preferences = parsePreferences(body.preferences);
+  const preferences = parseTripPreferences(body.preferences);
   if (!Array.isArray(locations) || locations.length < 2 || route.type !== "LineString" ||
     !Array.isArray(route.coordinates) || route.coordinates.length < 2 ||
     typeof corridorMeters !== "number" || !Number.isFinite(corridorMeters) ||

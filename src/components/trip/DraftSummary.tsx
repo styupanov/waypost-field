@@ -18,21 +18,33 @@ export default function DraftSummary({ draft, isDirty }: DraftSummaryProps) {
         <span>Approximate</span>
       </div>
 
-      <p
-        className={`${styles.draftRoute} ${
-          draft.stop ? styles.draftRouteWithStop : ""
-        }`}
-      >
-        <span>{draft.origin.label}</span>
-        <span aria-hidden="true">{draft.stop ? "↓" : "→"}</span>
-        {draft.stop ? (
-          <>
-            <span>{draft.stop.label}</span>
+      <ol className={styles.composedStops}>
+        <li>{draft.origin.label}</li>
+        {draft.stops.map((stop) => (
+          <li
+            key={
+              stop.source === "waypost"
+                ? `waypost-${stop.attractionId}`
+                : `user-${stop.label}`
+            }
+          >
             <span aria-hidden="true">↓</span>
-          </>
-        ) : null}
-        <span>{draft.destination.label}</span>
-      </p>
+            <span>
+              {stop.source === "waypost" ? "★ " : ""}
+              {stop.label}
+              <small>
+                {stop.source === "waypost"
+                  ? `Waypost suggestion${stop.duration ? ` · ${stop.duration} visit` : ""}`
+                  : "User stop"}
+              </small>
+            </span>
+          </li>
+        ))}
+        <li>
+          <span aria-hidden="true">↓</span>
+          <span>{draft.destination.label}</span>
+        </li>
+      </ol>
 
       <dl className={styles.draftMetrics}>
         <div>
@@ -44,6 +56,13 @@ export default function DraftSummary({ draft, isDirty }: DraftSummaryProps) {
           <dd>{formatApproximateDuration(draft.summary.durationSeconds)}</dd>
         </div>
       </dl>
+
+      <p className={styles.compositionSummary}>
+        {draft.composition.selectedPoiCount} Waypost {draft.composition.selectedPoiCount === 1 ? "stop" : "stops"}
+        {draft.composition.selectedPoiCount > 0
+          ? ` · +${Math.round(draft.composition.actualDetourSeconds / 60)} min measured driving detour`
+          : ""}
+      </p>
 
       {draft.summary.hasToll || draft.summary.hasFerry ? (
         <ul className={styles.routeIndicators} aria-label="Route indicators">

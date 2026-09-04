@@ -234,6 +234,38 @@
   text-align: left;
 }
 
+.composedStops {
+  display: grid;
+  gap: 5px;
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.composedStops li {
+  display: flex;
+  gap: 8px;
+}
+
+.composedStops li > span:first-child {
+  color: #94a3b8;
+}
+
+.composedStops small {
+  display: block;
+  margin-top: 1px;
+  color: #64748b;
+  font-size: 10px;
+}
+
+.compositionSummary {
+  margin: 10px 0 0;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .draftMetrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -8,7 +8,6 @@ import type {
   GeocodingResponse,
   GeocodingResult,
 } from "@/types/geocoding";
-import type { RouteResponse } from "@/types/route";
 import type {
   Coordinates,
   DraftEndpoint,
@@ -177,17 +176,16 @@ export default function TripIntentPanel({
         onCoordinatesResolved
       );
 
-      const response = await fetch("/api/route", {
+      const response = await fetch("/api/draft", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          locations: [
-            resolvedOrigin.coordinates,
-            ...(resolvedStop ? [resolvedStop.coordinates] : []),
-            resolvedDestination.coordinates,
-          ],
+          origin: resolvedOrigin,
+          stop: resolvedStop,
+          destination: resolvedDestination,
+          preferences,
         }),
       });
 
@@ -197,14 +195,8 @@ export default function TripIntentPanel({
         );
       }
 
-      const data = (await response.json()) as RouteResponse;
-      onDraftBuilt({
-        origin: resolvedOrigin,
-        stop: resolvedStop,
-        destination: resolvedDestination,
-        route: data.route,
-        summary: data.summary,
-      });
+      const data = (await response.json()) as TripDraft;
+      onDraftBuilt(data);
     } catch (reason) {
       onGenerationFailed();
       console.error("Failed to build route:", reason);

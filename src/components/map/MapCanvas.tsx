@@ -6,6 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { RouteFeature } from "@/types/route";
 import type {
   Coordinates,
+  DraftWaypostStop,
   PickingMode,
   TripField,
 } from "@/types/trip";
@@ -14,6 +15,7 @@ maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
 type MapCanvasProps = {
   route: RouteFeature | null;
+  waypostStops: DraftWaypostStop[];
   originCoordinates: Coordinates | null;
   stopCoordinates: Coordinates | null;
   destinationCoordinates: Coordinates | null;
@@ -90,6 +92,7 @@ function updateMarker(
 
 export default function MapCanvas({
   route,
+  waypostStops,
   originCoordinates,
   stopCoordinates,
   destinationCoordinates,
@@ -101,6 +104,7 @@ export default function MapCanvas({
   const originMarker = useRef<maplibregl.Marker | null>(null);
   const stopMarker = useRef<maplibregl.Marker | null>(null);
   const destinationMarker = useRef<maplibregl.Marker | null>(null);
+  const waypostMarkers = useRef(new Map<number, maplibregl.Marker>());
 
   useEffect(() => {
     if (!mapContainer.current || map.current) {
@@ -115,6 +119,7 @@ export default function MapCanvas({
     });
 
     map.current = mapInstance;
+    const managedWaypostMarkers = waypostMarkers.current;
 
     mapInstance.on("error", (event) => {
       console.error("MapLibre error:", event.error);
@@ -129,6 +134,8 @@ export default function MapCanvas({
       originMarker.current?.remove();
       stopMarker.current?.remove();
       destinationMarker.current?.remove();
+      for (const marker of managedWaypostMarkers.values()) marker.remove();
+      managedWaypostMarkers.clear();
       originMarker.current = null;
       stopMarker.current = null;
       destinationMarker.current = null;
@@ -191,6 +198,37 @@ export default function MapCanvas({
       "#b42318"
     );
   }, [destinationCoordinates]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+    if (!mapInstance) return;
+
+    const activeIds = new Set(waypostStops.map((stop) => stop.attractionId));
+    for (const [id, marker] of waypostMarkers.current) {
+      if (!activeIds.has(id)) {
+        marker.remove();
+        waypostMarkers.current.delete(id);
+      }
+    }
+    for (const stop of waypostStops) {
+      const position: [number, number] = [
+        stop.coordinates.lon,
+        stop.coordinates.lat,
+      ];
+      const existing = waypostMarkers.current.get(stop.attractionId);
+      if (existing) {
+        existing.setLngLat(position);
+      } else {
+        waypostMarkers.current.set(
+          stop.attractionId,
+          new maplibregl.Marker({ color: "#7c3aed", scale: 0.8 })
+            .setLngLat(position)
+            .setPopup(new maplibregl.Popup({ offset: 20 }).setText(stop.label))
+            .addTo(mapInstance)
+        );
+      }
+    }
+  }, [waypostStops]);
 
   useEffect(() => {
     const mapInstance = map.current;

@@ -1,16 +1,48 @@
+"use client";
+
+import { useState } from "react";
 import styles from "./TripIntentPanel.module.css";
 import {
   formatApproximateDistance,
   formatApproximateDuration,
 } from "@/lib/trip/formatters";
-import type { TripDraft } from "@/types/trip";
+import type { DraftEditAction, TripDraft } from "@/types/trip";
+import type { InterestCategory } from "@/types/preferences";
 
 type DraftSummaryProps = {
   draft: TripDraft;
   isDirty: boolean;
+  isEditing: boolean;
+  onEdit: (action: DraftEditAction) => void;
 };
 
-export default function DraftSummary({ draft, isDirty }: DraftSummaryProps) {
+const INTEREST_CATEGORY_LABELS: Record<InterestCategory, string> = {
+  nature_scenic: "Nature & scenic",
+  outdoor_adventure: "Outdoor adventure",
+  history_landmarks: "History & landmarks",
+  museums_culture: "Museums & culture",
+  food_drink: "Food & drink",
+  shopping: "Shopping",
+};
+
+function signedDuration(seconds: number) {
+  const sign = seconds >= 0 ? "+" : "−";
+  return `${sign}${Math.round(Math.abs(seconds) / 60)} min`;
+}
+
+function signedDistance(kilometers: number) {
+  const sign = kilometers >= 0 ? "+" : "−";
+  return `${sign}${Math.round(Math.abs(kilometers))} km`;
+}
+
+export default function DraftSummary({
+  draft,
+  isDirty,
+  isEditing,
+  onEdit,
+}: DraftSummaryProps) {
+  const [replacements, setReplacements] = useState<Record<number, string>>({});
+  const attractionStops = draft.stops.filter((stop) => stop.source !== "user");
   return (
     <section className={styles.draftSummary} aria-labelledby="draft-heading">
       <div className={styles.draftHeading}>
@@ -35,8 +67,22 @@ export default function DraftSummary({ draft, isDirty }: DraftSummaryProps) {
               <small>
                 {stop.source === "waypost"
                   ? `Waypost suggestion${stop.duration ? ` · ${stop.duration} visit` : ""}`
-                  : "User stop"}
+                  : stop.source === "user_attraction"
+                    ? `Added by you${stop.duration ? ` · ${stop.duration} visit` : ""}`
+                    : "User stop"}
               </small>
+              {stop.source !== "user" ? (
+                <button
+                  className={styles.inlineAction}
+                  type="button"
+                  disabled={isEditing}
+                  onClick={() =>
+                    onEdit({ type: "remove", attractionId: stop.attractionId })
+                  }
+                >
+                  Remove
+                </button>
+              ) : null}
             </span>
           </li>
         ))}
@@ -58,11 +104,101 @@ export default function DraftSummary({ draft, isDirty }: DraftSummaryProps) {
       </dl>
 
       <p className={styles.compositionSummary}>
-        {draft.composition.selectedPoiCount} Waypost {draft.composition.selectedPoiCount === 1 ? "stop" : "stops"}
+        {draft.composition.selectedPoiCount} attraction {draft.composition.selectedPoiCount === 1 ? "stop" : "stops"}
         {draft.composition.selectedPoiCount > 0
           ? ` · +${Math.round(draft.composition.actualDetourSeconds / 60)} min measured driving detour`
           : ""}
       </p>
+
+      {draft.lastEdit ? (
+        <p className={styles.editImpact} role="status">
+          Latest edit: {signedDuration(draft.lastEdit.deltaDurationSeconds)} driving · {signedDistance(draft.lastEdit.deltaDistanceKm)}
+        </p>
+      ) : null}
+
+      {attractionStops.length > 0 && draft.alternatives.length > 0 ? (
+        <div className={styles.replaceSection}>
+          <h3>Replace a suggested stop</h3>
+          {attractionStops.map((stop) => {
+            const replacementId = Number(
+              replacements[stop.attractionId] ??
+                draft.alternatives[0].attractionId
+            );
+            return (
+              <div key={`replace-${stop.attractionId}`}>
+                <label>
+                  Replace {stop.label}
+                  <select
+                    disabled={isEditing}
+                    value={replacementId}
+                    onChange={(event) =>
+                      setReplacements((current) => ({
+                        ...current,
+                        [stop.attractionId]: event.target.value,
+                      }))
+                    }
+                  >
+                    {draft.alternatives.map((alternative) => (
+                      <option
+                        key={alternative.attractionId}
+                        value={alternative.attractionId}
+                      >
+                        {alternative.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  disabled={isEditing}
+                  onClick={() =>
+                    onEdit({
+                      type: "replace",
+                      attractionId: stop.attractionId,
+                      replacementAttractionId: replacementId,
+                    })
+                  }
+                >
+                  Replace
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {draft.alternatives.length > 0 ? (
+        <section className={styles.alternatives} aria-labelledby="alternatives-heading">
+          <h3 id="alternatives-heading">Along the way</h3>
+          <p>Other places considered for this trip. They are not part of the route.</p>
+          <ul>
+            {draft.alternatives.map((alternative) => (
+              <li key={alternative.attractionId}>
+                <strong>{alternative.name}</strong>
+                <span>
+                  {alternative.interestCategory
+                    ? INTEREST_CATEGORY_LABELS[alternative.interestCategory]
+                    : alternative.rawCategory}
+                  {` · ${alternative.rating.toFixed(1)} (${alternative.reviewCount.toLocaleString("en-US")})`}
+                </span>
+                <span>
+                  ≈ {Math.round(alternative.individualDetourDurationSeconds / 60)} min individual driving detour
+                  {alternative.duration ? ` · ${alternative.duration} visit` : ""}
+                </span>
+                <button
+                  type="button"
+                  disabled={isEditing}
+                  onClick={() =>
+                    onEdit({ type: "add", attractionId: alternative.attractionId })
+                  }
+                >
+                  Add to trip
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {draft.summary.hasToll || draft.summary.hasFerry ? (
         <ul className={styles.routeIndicators} aria-label="Route indicators">

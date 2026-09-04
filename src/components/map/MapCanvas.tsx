@@ -6,16 +6,18 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { RouteFeature } from "@/types/route";
 import type {
   Coordinates,
-  DraftWaypostStop,
+  DraftAttractionStop,
   PickingMode,
   TripField,
 } from "@/types/trip";
+import type { TripAlternative } from "@/types/trip";
 
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
 type MapCanvasProps = {
   route: RouteFeature | null;
-  waypostStops: DraftWaypostStop[];
+  attractionStops: DraftAttractionStop[];
+  alternatives: TripAlternative[];
   originCoordinates: Coordinates | null;
   stopCoordinates: Coordinates | null;
   destinationCoordinates: Coordinates | null;
@@ -92,7 +94,8 @@ function updateMarker(
 
 export default function MapCanvas({
   route,
-  waypostStops,
+  attractionStops,
+  alternatives,
   originCoordinates,
   stopCoordinates,
   destinationCoordinates,
@@ -105,6 +108,7 @@ export default function MapCanvas({
   const stopMarker = useRef<maplibregl.Marker | null>(null);
   const destinationMarker = useRef<maplibregl.Marker | null>(null);
   const waypostMarkers = useRef(new Map<number, maplibregl.Marker>());
+  const alternativeMarkers = useRef(new Map<number, maplibregl.Marker>());
 
   useEffect(() => {
     if (!mapContainer.current || map.current) {
@@ -120,6 +124,7 @@ export default function MapCanvas({
 
     map.current = mapInstance;
     const managedWaypostMarkers = waypostMarkers.current;
+    const managedAlternativeMarkers = alternativeMarkers.current;
 
     mapInstance.on("error", (event) => {
       console.error("MapLibre error:", event.error);
@@ -136,6 +141,8 @@ export default function MapCanvas({
       destinationMarker.current?.remove();
       for (const marker of managedWaypostMarkers.values()) marker.remove();
       managedWaypostMarkers.clear();
+      for (const marker of managedAlternativeMarkers.values()) marker.remove();
+      managedAlternativeMarkers.clear();
       originMarker.current = null;
       stopMarker.current = null;
       destinationMarker.current = null;
@@ -203,14 +210,14 @@ export default function MapCanvas({
     const mapInstance = map.current;
     if (!mapInstance) return;
 
-    const activeIds = new Set(waypostStops.map((stop) => stop.attractionId));
+    const activeIds = new Set(attractionStops.map((stop) => stop.attractionId));
     for (const [id, marker] of waypostMarkers.current) {
       if (!activeIds.has(id)) {
         marker.remove();
         waypostMarkers.current.delete(id);
       }
     }
-    for (const stop of waypostStops) {
+    for (const stop of attractionStops) {
       const position: [number, number] = [
         stop.coordinates.lon,
         stop.coordinates.lat,
@@ -228,7 +235,42 @@ export default function MapCanvas({
         );
       }
     }
-  }, [waypostStops]);
+  }, [attractionStops]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+    if (!mapInstance) return;
+
+    const activeIds = new Set(alternatives.map((item) => item.attractionId));
+    for (const [id, marker] of alternativeMarkers.current) {
+      if (!activeIds.has(id)) {
+        marker.remove();
+        alternativeMarkers.current.delete(id);
+      }
+    }
+    for (const alternative of alternatives) {
+      const position: [number, number] = [
+        alternative.coordinates.lon,
+        alternative.coordinates.lat,
+      ];
+      const existing = alternativeMarkers.current.get(alternative.attractionId);
+      if (existing) {
+        existing.setLngLat(position);
+      } else {
+        alternativeMarkers.current.set(
+          alternative.attractionId,
+          new maplibregl.Marker({ color: "#64748b", scale: 0.5 })
+            .setLngLat(position)
+            .setPopup(
+              new maplibregl.Popup({ offset: 14 }).setText(
+                `${alternative.name} · Along the way`
+              )
+            )
+            .addTo(mapInstance)
+        );
+      }
+    }
+  }, [alternatives]);
 
   useEffect(() => {
     const mapInstance = map.current;

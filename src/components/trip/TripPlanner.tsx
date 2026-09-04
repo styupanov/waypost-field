@@ -224,6 +224,17 @@ export default function TripPlanner() {
     });
   }
 
+  function finishDraftEdit(nextDraft: TripDraft) {
+    setPlannerState((current) => ({
+      status: "draft_ready",
+      draft: nextDraft,
+      isDirty:
+        current.status === "generating_draft"
+          ? current.previousIsDirty
+          : false,
+    }));
+  }
+
   function failDraftGeneration() {
     setPlannerState((current) => {
       if (current.status !== "generating_draft") {
@@ -253,9 +264,10 @@ export default function TripPlanner() {
     <>
       <MapCanvas
         route={visibleDraft?.route ?? null}
-        waypostStops={
-          visibleDraft?.stops.filter((item) => item.source === "waypost") ?? []
+        attractionStops={
+          visibleDraft?.stops.filter((item) => item.source !== "user") ?? []
         }
+        alternatives={visibleDraft?.alternatives ?? []}
         originCoordinates={origin.coordinates}
         stopCoordinates={stop?.coordinates ?? null}
         destinationCoordinates={destination.coordinates}
@@ -276,6 +288,7 @@ export default function TripPlanner() {
         onRemoveStop={removeStop}
         onGenerationStarted={startDraftGeneration}
         onDraftBuilt={finishDraftGeneration}
+        onDraftEdited={finishDraftEdit}
         onGenerationFailed={failDraftGeneration}
         onPreferredCategoryChange={updatePreferredCategory}
         onExcludedCategoryChange={updateExcludedCategory}

@@ -14,6 +14,7 @@ import type {
   PlannerState,
   PickingMode,
   TripDraft,
+  DraftEditAction,
   TripEndpoint,
   TripField,
 } from "@/types/trip";
@@ -42,6 +43,7 @@ type TripIntentPanelProps = {
   onRemoveStop: () => void;
   onGenerationStarted: () => void;
   onDraftBuilt: (draft: TripDraft) => void;
+  onDraftEdited: (draft: TripDraft) => void;
   onGenerationFailed: () => void;
   onPreferredCategoryChange: (category: InterestCategory, selected: boolean) => void;
   onExcludedCategoryChange: (category: InterestCategory, selected: boolean) => void;
@@ -118,6 +120,7 @@ export default function TripIntentPanel({
   onRemoveStop,
   onGenerationStarted,
   onDraftBuilt,
+  onDraftEdited,
   onGenerationFailed,
   onPreferredCategoryChange,
   onExcludedCategoryChange,
@@ -212,6 +215,36 @@ export default function TripIntentPanel({
 
   function togglePickingMode(field: TripField) {
     onPickingModeChange(pickingMode === field ? null : field);
+  }
+
+  async function editDraft(action: DraftEditAction) {
+    if (!visibleDraft || isGenerating || requestInFlight.current) return;
+    setError(null);
+    requestInFlight.current = true;
+    onGenerationStarted();
+    try {
+      const response = await fetch("/api/draft/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft: visibleDraft, action }),
+      });
+      if (!response.ok) {
+        throw new TripBuildError(
+          "The draft is unchanged because that edit could not be routed."
+        );
+      }
+      onDraftEdited((await response.json()) as TripDraft);
+    } catch (reason) {
+      onGenerationFailed();
+      console.error("Failed to edit draft:", reason);
+      setError(
+        reason instanceof TripBuildError
+          ? reason.message
+          : "The draft is unchanged because that edit failed."
+      );
+    } finally {
+      requestInFlight.current = false;
+    }
   }
 
   return (
@@ -334,7 +367,12 @@ export default function TripIntentPanel({
         ) : null}
       </form>
       {visibleDraft ? (
-        <DraftSummary draft={visibleDraft} isDirty={visibleDraftIsDirty} />
+        <DraftSummary
+          draft={visibleDraft}
+          isDirty={visibleDraftIsDirty}
+          isEditing={isGenerating}
+          onEdit={editDraft}
+        />
       ) : null}
     </section>
   );

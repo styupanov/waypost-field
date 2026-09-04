@@ -37,6 +37,8 @@ export type TripDraft = {
   stops: DraftStop[];
   composition: DraftComposition;
   preferences: TripPreferences;
+  alternatives: TripAlternative[];
+  lastEdit: DraftEditImpact | null;
 };
 
 export type DraftUserStop = DraftEndpoint & {
@@ -55,9 +57,54 @@ export type DraftWaypostStop = {
   duration: string | null;
   visitDuration: VisitDuration | null;
   routeProgress: number;
+  personalizedScore: number;
+  individualDetourDistanceKm: number;
+  individualDetourDurationSeconds: number;
 };
 
-export type DraftStop = DraftUserStop | DraftWaypostStop;
+export type DraftUserAttractionStop = Omit<DraftWaypostStop, "source"> & {
+  source: "user_attraction";
+};
+
+export type DraftAttractionStop =
+  | DraftWaypostStop
+  | DraftUserAttractionStop;
+
+export type DraftStop = DraftUserStop | DraftAttractionStop;
+
+export type TripAlternative = {
+  attractionId: number;
+  name: string;
+  coordinates: Coordinates;
+  rawCategory: string;
+  interestCategory: PersonalizedAttractionOpportunity["attraction"]["interestCategory"];
+  rating: number;
+  reviewCount: number;
+  routeProgress: number;
+  personalizedScore: number;
+  individualDetourDistanceKm: number;
+  individualDetourDurationSeconds: number;
+  duration: string | null;
+  visitDuration: VisitDuration | null;
+};
+
+export type DraftEditAction =
+  | { type: "add"; attractionId: number }
+  | { type: "remove"; attractionId: number }
+  | {
+      type: "replace";
+      attractionId: number;
+      replacementAttractionId: number;
+    };
+
+export type DraftEditImpact = {
+  action: DraftEditAction["type"];
+  previousSummary: RouteSummary;
+  newSummary: RouteSummary;
+  deltaDurationSeconds: number;
+  deltaDistanceKm: number;
+  valhallaCallCount: number;
+};
 
 export type DraftComposition = {
   targetPoiCount: number;

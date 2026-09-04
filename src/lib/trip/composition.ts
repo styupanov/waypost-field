@@ -6,6 +6,7 @@ import type { PersonalizedAttractionOpportunity } from "@/types/attractions";
 import type {
   DraftEndpoint,
   DraftStop,
+  TripAlternative,
   TripDraft,
 } from "@/types/trip";
 import type { TripPreferences } from "@/types/preferences";
@@ -16,6 +17,7 @@ export const DRIVING_DETOUR_BUDGET_RATIO = 0.15;
 export const MAX_DRIVING_DETOUR_SECONDS = 3 * 60 * 60;
 export const MIN_PERSONALIZED_SCORE = 60;
 export const DISTRIBUTION_BONUS_WEIGHT = 10;
+export const TRIP_ALTERNATIVE_LIMIT = 12;
 
 type DraftCompositionRequest = {
   origin: DraftEndpoint;
@@ -106,21 +108,9 @@ export function targetPoiCount(durationSeconds: number) {
 }
 
 function selectDistributedOpportunities(
-  opportunities: PersonalizedAttractionOpportunity[],
-  route: RouteFeature,
+  positioned: PositionedOpportunity[],
   maximum: number
 ) {
-  const positioned: PositionedOpportunity[] = opportunities
-    .filter((opportunity) =>
-      opportunity.personalizedScore >= MIN_PERSONALIZED_SCORE
-    )
-    .map((opportunity) => ({
-      ...opportunity,
-      routeProgress: calculateRouteProgress(route, {
-        lat: opportunity.attraction.lat,
-        lon: opportunity.attraction.lon,
-      }),
-    }));
   const selected: PositionedOpportunity[] = [];
 
   while (selected.length < maximum) {
@@ -151,6 +141,29 @@ function selectDistributedOpportunities(
     selected.push(available[0]);
   }
   return selected;
+}
+
+function toAlternative(
+  opportunity: PositionedOpportunity
+): TripAlternative {
+  return {
+    attractionId: opportunity.attraction.id,
+    name: opportunity.attraction.name,
+    coordinates: {
+      lat: opportunity.attraction.lat,
+      lon: opportunity.attraction.lon,
+    },
+    rawCategory: opportunity.attraction.category,
+    interestCategory: opportunity.attraction.interestCategory,
+    rating: opportunity.attraction.rating,
+    reviewCount: opportunity.attraction.reviewCount,
+    routeProgress: opportunity.routeProgress,
+    personalizedScore: opportunity.personalizedScore,
+    individualDetourDistanceKm: opportunity.detourDistanceKm,
+    individualDetourDurationSeconds: opportunity.detourDurationSeconds,
+    duration: opportunity.attraction.duration,
+    visitDuration: opportunity.attraction.visitDuration,
+  };
 }
 
 function weakestOpportunity(selected: PositionedOpportunity[]) {
@@ -197,6 +210,9 @@ function waypointSequence(
       duration: opportunity.attraction.duration,
       visitDuration: opportunity.attraction.visitDuration,
       routeProgress: opportunity.routeProgress,
+      personalizedScore: opportunity.personalizedScore,
+      individualDetourDistanceKm: opportunity.detourDistanceKm,
+      individualDetourDurationSeconds: opportunity.detourDurationSeconds,
     },
     tieBreaker: opportunity.attraction.id,
   }));
@@ -223,7 +239,7 @@ function waypointSequence(
   };
 }
 
-function suggestedVisitDuration(stops: DraftStop[]) {
+export function suggestedVisitDuration(stops: DraftStop[]) {
   let minimumMinutes = 0;
   let maximumMinutes: number | null = 0;
   let hasUnknown = false;
@@ -270,11 +286,18 @@ export async function composeTripDraft(
     { baselineRoute: baseline }
   );
 
-  let selected = selectDistributedOpportunities(
-    opportunityResult.opportunities,
-    baseline.route,
-    target
-  );
+  const positioned = opportunityResult.opportunities
+    .filter((opportunity) =>
+      opportunity.personalizedScore >= MIN_PERSONALIZED_SCORE
+    )
+    .map((opportunity) => ({
+      ...opportunity,
+      routeProgress: calculateRouteProgress(baseline.route, {
+        lat: opportunity.attraction.lat,
+        lon: opportunity.attraction.lon,
+      }),
+    }));
+  let selected = selectDistributedOpportunities(positioned, target);
   let finalRoute: RouteResponse = baseline;
   let finalStops: DraftStop[] = request.stop
     ? [{ ...request.stop, source: "user" }]
@@ -306,6 +329,17 @@ export async function composeTripDraft(
     actualDetourWasClamped = false;
   }
 
+  const selectedAttractionIds = new Set(
+    selected.map((opportunity) => opportunity.attraction.id)
+  );
+  const alternatives = positioned
+    .filter(
+      (opportunity) =>
+        !selectedAttractionIds.has(opportunity.attraction.id)
+    )
+    .slice(0, TRIP_ALTERNATIVE_LIMIT)
+    .map(toAlternative);
+
   return {
     origin: request.origin,
     stop: request.stop,
@@ -315,6 +349,8 @@ export async function composeTripDraft(
     summary: finalRoute.summary,
     stops: finalStops,
     preferences: request.preferences,
+    alternatives,
+    lastEdit: null,
     composition: {
       targetPoiCount: target,
       selectedPoiCount: selected.length,

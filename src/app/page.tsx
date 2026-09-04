@@ -1,9 +1,9 @@
-import MapCanvas from "@/components/map/MapCanvas";
+import TripPlanner from "@/components/trip/TripPlanner";
 
 export default function Home() {
   return (
     <main className="app-shell">
-      <MapCanvas />
+      <TripPlanner />
     </main>
   );
 }

@@ -57,6 +57,9 @@ type TripIntentPanelProps = {
   onStartReplacement: (attractionId: number) => void;
   onCancelReplacement: () => void;
   onEditDraft: (action: DraftEditAction) => void;
+  ownedTripId: string | null;
+  ownershipStatus: "unsaved" | "saving" | "saved" | "error";
+  onSave: () => void;
 };
 
 class TripBuildError extends Error {
@@ -142,6 +145,9 @@ export default function TripIntentPanel({
   onStartReplacement,
   onCancelReplacement,
   onEditDraft,
+  ownedTripId,
+  ownershipStatus,
+  onSave,
 }: TripIntentPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [isEditingTrip, setIsEditingTrip] = useState(false);
@@ -213,6 +219,7 @@ export default function TripIntentPanel({
           stop: resolvedStop,
           destination: resolvedDestination,
           preferences,
+          ownedTripId,
         }),
       });
 
@@ -394,6 +401,8 @@ export default function TripIntentPanel({
           onCancelReplacement={onCancelReplacement}
           onEdit={onEditDraft}
           onEditTrip={() => setIsEditingTrip(true)}
+          ownershipStatus={ownershipStatus}
+          onSave={onSave}
         />
       ) : null}
       {visibleDraft ? (

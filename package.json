@@ -8,11 +8,13 @@
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "node --env-file=.env.local scripts/migrate.mjs",
-    "db:verify-persistence": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-trip-persistence.ts"
+    "db:verify-persistence": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-trip-persistence.ts",
+    "db:verify-ownership": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-auth-ownership.ts"
   },
   "dependencies": {
     "maplibre-gl": "^6.7.0",
     "next": "16.3.4",
+    "next-auth": "^5.0.0-beta.32",
     "pg": "^8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"

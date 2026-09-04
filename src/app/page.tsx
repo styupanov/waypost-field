@@ -1,9 +1,11 @@
 import TripPlanner from "@/components/trip/TripPlanner";
+import { auth } from "@/auth";
 
-export default function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ trip?: string }> }) {
+  const [session, params] = await Promise.all([auth(), searchParams]);
   return (
     <main className="app-shell">
-      <TripPlanner />
+      <TripPlanner initialSession={session?.user ?? null} requestedTripId={params.trip ?? null} />
     </main>
   );
 }

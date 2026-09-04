@@ -1,8 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { getSession, signOut } from "next-auth/react";
 import MapCanvas from "@/components/map/MapCanvas";
 import AlongTheWay from "@/components/trip/AlongTheWay";
+import LocalSignInDialog from "@/components/trip/LocalSignInDialog";
 import TripIntentPanel from "@/components/trip/TripIntentPanel";
 import type {
   Coordinates,
@@ -39,7 +41,9 @@ function coordinateLabel(coordinates: Coordinates) {
   return `${coordinates.lat.toFixed(5)}, ${coordinates.lon.toFixed(5)}`;
 }
 
-export default function TripPlanner() {
+type PlannerSession = { email?: string | null; name?: string | null } | null;
+
+export default function TripPlanner({ initialSession, requestedTripId }: { initialSession: PlannerSession; requestedTripId: string | null }) {
   const [plannerState, setPlannerState] = useState<PlannerState>({
     status: "trip_intent",
   });
@@ -52,12 +56,47 @@ export default function TripPlanner() {
   const [replacementTargetId, setReplacementTargetId] = useState<number | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [isAlongTheWayOpen, setIsAlongTheWayOpen] = useState(false);
+  const [sessionUser, setSessionUser] = useState<PlannerSession>(initialSession);
+  const [ownedTripId, setOwnedTripId] = useState<string | null>(null);
+  const [ownershipStatus, setOwnershipStatus] = useState<"unsaved" | "saving" | "saved" | "error">("unsaved");
+  const [showSignIn, setShowSignIn] = useState(false);
+  const [savedTripState, setSavedTripState] = useState<"idle" | "loading" | "forbidden" | "error">(
+    requestedTripId ? (initialSession ? "loading" : "forbidden") : "idle"
+  );
+  const [findingAlternatives, setFindingAlternatives] = useState(false);
   const editRequestInFlight = useRef(false);
   const [preferences, setPreferences] = useState<TripPreferences>(() => ({
     ...DEFAULT_TRIP_PREFERENCES,
     preferredCategories: [],
     excludedCategories: [],
   }));
+
+  useEffect(() => {
+    if (!requestedTripId || !sessionUser) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const response = await fetch(`/api/trips/${requestedTripId}`);
+      if (!response.ok) { if (!cancelled) setSavedTripState(response.status === 404 ? "forbidden" : "error"); return; }
+      const data = await response.json() as { tripId: string; draft: TripDraft };
+      if (cancelled) return;
+      const draft = data.draft;
+      setOwnedTripId(data.tripId); setOwnershipStatus("saved"); setSavedTripState("idle");
+      setPlannerState({ status: "draft_ready", draft, isDirty: false }); setPreferences(draft.preferences);
+      setOrigin({ input: draft.origin.label, coordinates: draft.origin.coordinates, resolvedLabel: draft.origin.label, source: "text" });
+      setDestination({ input: draft.destination.label, coordinates: draft.destination.coordinates, resolvedLabel: draft.destination.label, source: "text" });
+      setStop(draft.stop ? { input: draft.stop.label, coordinates: draft.stop.coordinates, resolvedLabel: draft.stop.label, source: "text" } : null);
+      setFindingAlternatives(true);
+      const alternativesResponse = await fetch(`/api/trips/${data.tripId}/alternatives`, { method: "POST" });
+      if (alternativesResponse.ok && !cancelled) {
+        const result = await alternativesResponse.json() as { alternatives: TripDraft["alternatives"] };
+        setPlannerState((current) => current.status === "draft_ready" ? { ...current, draft: { ...current.draft, alternatives: result.alternatives } } : current);
+      }
+      if (!cancelled) setFindingAlternatives(false);
+    })();
+    return () => { cancelled = true; };
+  }, [requestedTripId, sessionUser]);
 
   function updatePreferences(
     update: (current: TripPreferences) => TripPreferences
@@ -200,9 +239,11 @@ export default function TripPlanner() {
         ? { ...current, isDirty: true }
         : current
     );
+    if (ownedTripId) setOwnershipStatus("unsaved");
   }
 
   function startDraftGeneration() {
+    if (ownedTripId) setOwnershipStatus("saving");
     setPlannerState((current) => {
       if (current.status === "generating_draft") {
         return current;
@@ -235,6 +276,7 @@ export default function TripPlanner() {
     setReplacementTargetId(null);
     setEditError(null);
     setIsAlongTheWayOpen(false);
+    if (ownedTripId) setOwnershipStatus("saved");
   }
 
   function finishDraftEdit(nextDraft: TripDraft) {
@@ -249,6 +291,7 @@ export default function TripPlanner() {
   }
 
   function failDraftGeneration() {
+    if (ownedTripId) setOwnershipStatus("error");
     setPlannerState((current) => {
       if (current.status !== "generating_draft") {
         return current;
@@ -279,12 +322,13 @@ export default function TripPlanner() {
     }
     editRequestInFlight.current = true;
     setEditError(null);
+    if (ownedTripId) setOwnershipStatus("saving");
     startDraftGeneration();
     try {
       const response = await fetch("/api/draft/edit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draft: visibleDraft, action }),
+        body: JSON.stringify({ draft: visibleDraft, action, ownedTripId }),
       });
       if (!response.ok) {
         throw new Error("Draft edit could not be routed.");
@@ -300,13 +344,30 @@ export default function TripPlanner() {
             ? action.replacementAttractionId
             : action.attractionId
       );
+      if (ownedTripId) setOwnershipStatus("saved");
     } catch (reason) {
       failDraftGeneration();
       console.error("Failed to edit draft:", reason);
       setEditError("The draft is unchanged because that edit could not be routed.");
+      if (ownedTripId) setOwnershipStatus("error");
     } finally {
       editRequestInFlight.current = false;
     }
+  }
+
+  async function persistCurrentDraft() {
+    if (!visibleDraft || (plannerState.status === "draft_ready" && plannerState.isDirty)) return;
+    setOwnershipStatus("saving");
+    const response = await fetch("/api/trips", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft: visibleDraft }) });
+    if (!response.ok) { setOwnershipStatus("error"); throw new Error("Trip save failed"); }
+    const data = await response.json() as { tripId: string };
+    setOwnedTripId(data.tripId); setOwnershipStatus("saved"); setShowSignIn(false);
+    window.history.replaceState(null, "", `/?trip=${data.tripId}`);
+  }
+
+  function requestSave() {
+    if (!sessionUser) { setShowSignIn(true); return; }
+    void persistCurrentDraft().catch(() => undefined);
   }
 
   function selectPoi(attractionId: number) {
@@ -377,6 +438,9 @@ export default function TripPlanner() {
         }}
         onCancelReplacement={() => setReplacementTargetId(null)}
         onEditDraft={editDraft}
+        ownedTripId={ownedTripId}
+        ownershipStatus={ownershipStatus}
+        onSave={requestSave}
       />
       {visibleDraft && visibleDraft.alternatives.length > 0 ? (
         <AlongTheWay
@@ -407,6 +471,12 @@ export default function TripPlanner() {
           onCancelReplacement={() => setReplacementTargetId(null)}
         />
       ) : null}
+      {findingAlternatives ? <div className="finding-places" role="status">Finding places along the way…</div> : null}
+      {sessionUser ? <div className="account-control"><span>{sessionUser.name || sessionUser.email}</span><button onClick={() => void signOut({ redirectTo: ownedTripId ? `/?trip=${ownedTripId}` : "/" })}>Sign out</button></div> : null}
+      {showSignIn ? <LocalSignInDialog onCancel={() => setShowSignIn(false)} onAuthenticated={async () => { const session = await getSession(); setSessionUser(session?.user ?? null); if (!requestedTripId || visibleDraft) await persistCurrentDraft(); else setShowSignIn(false); }} /> : null}
+      {savedTripState === "loading" ? <div className="load-gate">Loading saved trip…</div> : null}
+      {savedTripState === "forbidden" ? <div className="load-gate"><div><p>{sessionUser ? "You don't have access to this saved trip." : "Sign in to open this saved trip."}</p>{!sessionUser ? <button onClick={() => setShowSignIn(true)}>Sign in</button> : null}</div></div> : null}
+      {savedTripState === "error" ? <div className="load-gate">The saved trip could not be loaded.</div> : null}
     </>
   );
 }

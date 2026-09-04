@@ -14,6 +14,10 @@ export type AttractionSnapshot = {
   reviewCount: number;
   duration: string | null;
   visitDuration: VisitDuration | null;
+  routeProgress: number;
+  personalizedScore: number;
+  individualDetourDistanceKm: number;
+  individualDetourDurationSeconds: number;
 };
 
 export type PersistedTripStop = {

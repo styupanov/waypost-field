@@ -159,6 +159,10 @@ function stopPersistence(stop: DraftStop): {
       reviewCount: stop.reviewCount,
       duration: stop.duration,
       visitDuration: stop.visitDuration,
+      routeProgress: stop.routeProgress,
+      personalizedScore: stop.personalizedScore,
+      individualDetourDistanceKm: stop.individualDetourDistanceKm,
+      individualDetourDurationSeconds: stop.individualDetourDurationSeconds,
     },
   };
 }
@@ -329,6 +333,31 @@ export async function getCurrentTripVersion(tripId: string) {
   if (!trip) throw new TripPersistenceError("TRIP_NOT_FOUND", "Trip was not found.");
   if (!trip.currentVersion) throw new TripPersistenceError("CURRENT_VERSION_NOT_FOUND", "Trip has no current version.");
   return trip.currentVersion;
+}
+
+export async function getOwnedTrip(userId: string, tripId: string) {
+  assertUuid(userId);
+  assertUuid(tripId);
+  const trip = await getTrip(tripId);
+  return trip?.userId === userId ? trip : null;
+}
+
+export async function assertTripOwnership(userId: string, tripId: string) {
+  const trip = await getOwnedTrip(userId, tripId);
+  if (!trip) {
+    throw new TripPersistenceError("TRIP_NOT_FOUND", "Trip was not found.");
+  }
+  return trip;
+}
+
+export async function saveOwnedCurrentDraftVersion(
+  userId: string,
+  tripId: string,
+  draft: TripDraft,
+  options: { routingEngineVersion?: string | null } = {}
+) {
+  await assertTripOwnership(userId, tripId);
+  return saveCurrentDraftVersion(tripId, draft, options);
 }
 
 export async function saveCurrentDraftVersion(

@@ -111,13 +111,13 @@ export type DraftComposition = {
   selectedPoiCount: number;
   detourBudgetSeconds: number;
   actualDetourSeconds: number;
-  actualDetourWasClamped: boolean;
-  valhallaCallCount: number;
-  corridorCandidateCount: number;
-  candidateCountConsidered: number;
-  candidatesAfterDeduplication: number;
-  opportunityShortlistSize: number;
-  candidatePoolTruncated: boolean;
+  actualDetourWasClamped: boolean | null;
+  valhallaCallCount: number | null;
+  corridorCandidateCount: number | null;
+  candidateCountConsidered: number | null;
+  candidatesAfterDeduplication: number | null;
+  opportunityShortlistSize: number | null;
+  candidatePoolTruncated: boolean | null;
   suggestedVisitDuration: {
     minimumMinutes: number;
     maximumMinutes: number | null;

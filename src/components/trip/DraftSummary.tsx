@@ -17,6 +17,8 @@ type DraftSummaryProps = {
   onCancelReplacement: () => void;
   onEdit: (action: DraftEditAction) => void;
   onEditTrip: () => void;
+  ownershipStatus: "unsaved" | "saving" | "saved" | "error";
+  onSave: () => void;
 };
 
 function signedDuration(seconds: number) {
@@ -43,6 +45,8 @@ export default function DraftSummary({
   onCancelReplacement,
   onEdit,
   onEditTrip,
+  ownershipStatus,
+  onSave,
 }: DraftSummaryProps) {
   const replacementTarget = draft.stops.find(
     (stop) =>
@@ -52,6 +56,15 @@ export default function DraftSummary({
   return (
     <div className={styles.draftWorkspace}>
       <TripSummary draft={draft} onEditTrip={onEditTrip} />
+      <div className={styles.ownershipAction}>
+        {ownershipStatus === "saved" ? <span>Saved to your map</span> : (
+          <button type="button" disabled={isDirty || isEditing || ownershipStatus === "saving"} onClick={onSave}>
+            {ownershipStatus === "saving" ? "Saving…" : "Save this to your map"}
+          </button>
+        )}
+        {isDirty ? <small>Rebuild the trip before saving.</small> : null}
+        {ownershipStatus === "error" ? <small role="alert">The trip is not saved. Please try again.</small> : null}
+      </div>
       {draft.lastEdit ? (
         <p className={styles.editImpact} role="status">
           Route updated · {signedDuration(draft.lastEdit.deltaDurationSeconds)} driving · {signedDistance(draft.lastEdit.deltaDistanceKm)}

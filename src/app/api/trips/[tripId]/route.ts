@@ -1,0 +1,18 @@
+import { NextResponse } from "next/server";
+import { authenticatedWaypostUserId } from "@/lib/auth/session";
+import { reconstructTripDraft } from "@/lib/trips/reconstruction";
+import { getOwnedTrip } from "@/lib/trips/repository";
+
+export async function GET(_request: Request, context: { params: Promise<{ tripId: string }> }) {
+  const userId = await authenticatedWaypostUserId();
+  if (!userId) return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "Sign in is required." } }, { status: 401 });
+  try {
+    const { tripId } = await context.params;
+    const trip = await getOwnedTrip(userId, tripId);
+    if (!trip) return NextResponse.json({ error: { code: "TRIP_NOT_FOUND", message: "Trip was not found." } }, { status: 404 });
+    return NextResponse.json({ tripId: trip.id, draft: reconstructTripDraft(trip) });
+  } catch (error) {
+    console.error("Failed to load owned trip.", error);
+    return NextResponse.json({ error: { code: "TRIP_LOAD_FAILED", message: "The trip could not be loaded." } }, { status: 500 });
+  }
+}

@@ -5,6 +5,9 @@ import { RoutingServiceError } from "@/lib/routing/valhalla";
 import { composeTripDraft } from "@/lib/trip/composition";
 import { parseTripPreferences } from "@/lib/trip/preferences-validation";
 import type { DraftEndpoint } from "@/types/trip";
+import { authenticatedWaypostUserId } from "@/lib/auth/session";
+import { assertTripOwnership, saveOwnedCurrentDraftVersion } from "@/lib/trips/repository";
+import { TripPersistenceError } from "@/lib/trips/repository";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -43,15 +46,25 @@ export async function POST(request: Request) {
     : parseEndpoint(body.stop);
   const destination = parseEndpoint(body.destination);
   const preferences = parseTripPreferences(body.preferences);
+  const ownedTripId = typeof body.ownedTripId === "string" ? body.ownedTripId : null;
   if (!origin || (body.stop !== null && body.stop !== undefined && !stop) || !destination || !preferences) {
     return errorResponse("INVALID_DRAFT_REQUEST", "Valid trip endpoints and preferences are required.", 400);
   }
 
   try {
-    return NextResponse.json(
-      await composeTripDraft({ origin, stop, destination, preferences })
-    );
+    let userId: string | null = null;
+    if (ownedTripId) {
+      userId = await authenticatedWaypostUserId();
+      if (!userId) return errorResponse("UNAUTHORIZED", "Sign in is required.", 401);
+      await assertTripOwnership(userId, ownedTripId);
+    }
+    const draft = await composeTripDraft({ origin, stop, destination, preferences });
+    if (ownedTripId && userId) await saveOwnedCurrentDraftVersion(userId, ownedTripId, draft);
+    return NextResponse.json(draft);
   } catch (reason) {
+    if (reason instanceof TripPersistenceError && reason.code === "TRIP_NOT_FOUND") {
+      return errorResponse("TRIP_NOT_FOUND", "Trip was not found.", 404);
+    }
     if (reason instanceof DatabaseConfigurationError) {
       console.error("Draft attraction database is not configured.");
       return errorResponse("DATABASE_NOT_CONFIGURED", "Draft composition is not configured.", 500);

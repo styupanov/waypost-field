@@ -1,9 +1,10 @@
 import "server-only";
-import type { RouteFeature, RoutePoint, RouteResponse } from "@/types/route";
+import type { RouteFeature, RoutePoint, RouteResponse, RouteTimingSegment, TimedRouteResponse } from "@/types/route";
 
 const LOCAL_VALHALLA_URL = "http://localhost:8002";
 
-type ValhallaLeg = { shape?: unknown };
+type ValhallaManeuver = { time?: unknown; begin_shape_index?: unknown; end_shape_index?: unknown };
+type ValhallaLeg = { shape?: unknown; maneuvers?: ValhallaManeuver[]; summary?: { time?: unknown } };
 type ValhallaResponse = {
   trip?: {
     legs?: ValhallaLeg[];
@@ -62,7 +63,7 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-export async function calculateRoute(locations: RoutePoint[]): Promise<RouteResponse> {
+async function requestRoute(locations: RoutePoint[], includeTiming: boolean): Promise<RouteResponse | TimedRouteResponse> {
   const baseUrl = process.env.VALHALLA_URL ?? LOCAL_VALHALLA_URL;
   let response: Response;
   try {
@@ -93,11 +94,23 @@ export async function calculateRoute(locations: RoutePoint[]): Promise<RouteResp
   }
 
   const coordinates: [number, number][] = [];
+  const timingSegments: RouteTimingSegment[] = [];
+  const waypointArrivalSeconds = [0];
+  let cumulativeTime = 0;
   for (const leg of legs) {
     if (typeof leg.shape !== "string") throw new RoutingServiceError("The routing service returned invalid geometry.");
     const legCoordinates = decodePolyline(leg.shape);
+    const shapeOffset = coordinates.length === 0 ? 0 : coordinates.length - 1;
     if (coordinates.length > 0) legCoordinates.shift();
     coordinates.push(...legCoordinates);
+    if (includeTiming) {
+      for (const maneuver of leg.maneuvers ?? []) {
+        if (!isFiniteNumber(maneuver.time) || !isFiniteNumber(maneuver.begin_shape_index) || !isFiniteNumber(maneuver.end_shape_index)) continue;
+        timingSegments.push({ beginShapeIndex: shapeOffset + maneuver.begin_shape_index, endShapeIndex: shapeOffset + maneuver.end_shape_index, beginTimeSeconds: cumulativeTime, endTimeSeconds: cumulativeTime + maneuver.time });
+        cumulativeTime += maneuver.time;
+      }
+      waypointArrivalSeconds.push(cumulativeTime);
+    }
   }
 
   const route: RouteFeature = {
@@ -105,7 +118,7 @@ export async function calculateRoute(locations: RoutePoint[]): Promise<RouteResp
     properties: {},
     geometry: { type: "LineString", coordinates },
   };
-  return {
+  const result: RouteResponse = {
     route,
     summary: {
       distanceKm: summary.length,
@@ -115,4 +128,15 @@ export async function calculateRoute(locations: RoutePoint[]): Promise<RouteResp
       hasFerry: summary.has_ferry === true,
     },
   };
+  if (!includeTiming) return result;
+  if (timingSegments.length === 0) throw new RoutingServiceError("Valhalla returned no route timing data.");
+  return { ...result, timingSegments, waypointArrivalSeconds };
+}
+
+export async function calculateRoute(locations: RoutePoint[]): Promise<RouteResponse> {
+  return requestRoute(locations, false) as Promise<RouteResponse>;
+}
+
+export async function calculateTimedRoute(locations: RoutePoint[]): Promise<TimedRouteResponse> {
+  return requestRoute(locations, true) as Promise<TimedRouteResponse>;
 }

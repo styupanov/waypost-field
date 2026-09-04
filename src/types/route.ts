@@ -20,6 +20,18 @@ export type RouteResponse = {
   summary: RouteSummary;
 };
 
+export type RouteTimingSegment = {
+  beginShapeIndex: number;
+  endShapeIndex: number;
+  beginTimeSeconds: number;
+  endTimeSeconds: number;
+};
+
+export type TimedRouteResponse = RouteResponse & {
+  timingSegments: RouteTimingSegment[];
+  waypointArrivalSeconds: number[];
+};
+
 export type RoutePoint = {
   lat: number;
   lon: number;

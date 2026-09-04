@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import DraftSummary from "@/components/trip/DraftSummary";
 import TripPreferencesPanel from "@/components/trip/TripPreferencesPanel";
 import styles from "./TripIntentPanel.module.css";
@@ -43,12 +43,20 @@ type TripIntentPanelProps = {
   onRemoveStop: () => void;
   onGenerationStarted: () => void;
   onDraftBuilt: (draft: TripDraft) => void;
-  onDraftEdited: (draft: TripDraft) => void;
   onGenerationFailed: () => void;
   onPreferredCategoryChange: (category: InterestCategory, selected: boolean) => void;
   onExcludedCategoryChange: (category: InterestCategory, selected: boolean) => void;
   onDetourToleranceChange: (value: DetourTolerance) => void;
   onStopStyleChange: (value: StopStyle) => void;
+  activePoiId: number | null;
+  hoveredPoiId: number | null;
+  replacementTargetId: number | null;
+  editError: string | null;
+  onPoiHover: (attractionId: number | null) => void;
+  onPoiSelect: (attractionId: number) => void;
+  onStartReplacement: (attractionId: number) => void;
+  onCancelReplacement: () => void;
+  onEditDraft: (action: DraftEditAction) => void;
 };
 
 class TripBuildError extends Error {
@@ -120,15 +128,25 @@ export default function TripIntentPanel({
   onRemoveStop,
   onGenerationStarted,
   onDraftBuilt,
-  onDraftEdited,
   onGenerationFailed,
   onPreferredCategoryChange,
   onExcludedCategoryChange,
   onDetourToleranceChange,
   onStopStyleChange,
+  activePoiId,
+  hoveredPoiId,
+  replacementTargetId,
+  editError,
+  onPoiHover,
+  onPoiSelect,
+  onStartReplacement,
+  onCancelReplacement,
+  onEditDraft,
 }: TripIntentPanelProps) {
   const [error, setError] = useState<string | null>(null);
+  const [isEditingTrip, setIsEditingTrip] = useState(false);
   const requestInFlight = useRef(false);
+  const panelRef = useRef<HTMLElement | null>(null);
   const isGenerating = plannerState.status === "generating_draft";
   const visibleDraft =
     plannerState.status === "draft_ready"
@@ -142,6 +160,12 @@ export default function TripIntentPanel({
       : plannerState.status === "generating_draft"
         ? plannerState.previousIsDirty
         : false;
+
+  useEffect(() => {
+    if (visibleDraft && !isEditingTrip) {
+      panelRef.current?.scrollTo({ top: 0 });
+    }
+  }, [isEditingTrip, visibleDraft]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -200,6 +224,7 @@ export default function TripIntentPanel({
 
       const data = (await response.json()) as TripDraft;
       onDraftBuilt(data);
+      setIsEditingTrip(false);
     } catch (reason) {
       onGenerationFailed();
       console.error("Failed to build route:", reason);
@@ -217,40 +242,12 @@ export default function TripIntentPanel({
     onPickingModeChange(pickingMode === field ? null : field);
   }
 
-  async function editDraft(action: DraftEditAction) {
-    if (!visibleDraft || isGenerating || requestInFlight.current) return;
-    setError(null);
-    requestInFlight.current = true;
-    onGenerationStarted();
-    try {
-      const response = await fetch("/api/draft/edit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draft: visibleDraft, action }),
-      });
-      if (!response.ok) {
-        throw new TripBuildError(
-          "The draft is unchanged because that edit could not be routed."
-        );
-      }
-      onDraftEdited((await response.json()) as TripDraft);
-    } catch (reason) {
-      onGenerationFailed();
-      console.error("Failed to edit draft:", reason);
-      setError(
-        reason instanceof TripBuildError
-          ? reason.message
-          : "The draft is unchanged because that edit failed."
-      );
-    } finally {
-      requestInFlight.current = false;
-    }
-  }
-
   return (
-    <section className={styles.panel} aria-labelledby="trip-intent-heading">
-      <h1 id="trip-intent-heading">Trip intent</h1>
-      <form onSubmit={handleSubmit}>
+    <section ref={panelRef} className={styles.panel} aria-label="Trip planner">
+      {!visibleDraft || isEditingTrip ? (
+        <h1 id="trip-intent-heading">{visibleDraft ? "Edit trip" : "Plan a trip"}</h1>
+      ) : null}
+      {!visibleDraft || isEditingTrip ? <form onSubmit={handleSubmit}>
         <div className={styles.endpointField}>
           <label className={styles.placeField}>
             Origin
@@ -347,32 +344,70 @@ export default function TripIntentPanel({
           </button>
         </div>
 
-        <TripPreferencesPanel
-          preferences={preferences}
-          disabled={isGenerating}
-          onPreferredCategoryChange={onPreferredCategoryChange}
-          onExcludedCategoryChange={onExcludedCategoryChange}
-          onDetourToleranceChange={onDetourToleranceChange}
-          onStopStyleChange={onStopStyleChange}
-        />
+        {!visibleDraft ? (
+          <TripPreferencesPanel
+            preferences={preferences}
+            disabled={isGenerating}
+            onPreferredCategoryChange={onPreferredCategoryChange}
+            onExcludedCategoryChange={onExcludedCategoryChange}
+            onDetourToleranceChange={onDetourToleranceChange}
+            onStopStyleChange={onStopStyleChange}
+          />
+        ) : null}
 
         <button type="submit" disabled={isGenerating || pickingMode !== null}>
-          {isGenerating ? "Building route…" : "Build route"}
+          {isGenerating ? "Building route…" : visibleDraft ? "Rebuild trip" : "Build trip"}
         </button>
+
+        {visibleDraft ? (
+          <button
+            className={styles.cancelEditButton}
+            type="button"
+            disabled={isGenerating}
+            onClick={() => {
+              setIsEditingTrip(false);
+              onPickingModeChange(null);
+            }}
+          >
+            Cancel editing
+          </button>
+        ) : null}
 
         {error ? (
           <p className={styles.error} role="alert">
             {error}
           </p>
         ) : null}
-      </form>
+      </form> : null}
       {visibleDraft ? (
         <DraftSummary
           draft={visibleDraft}
           isDirty={visibleDraftIsDirty}
           isEditing={isGenerating}
-          onEdit={editDraft}
+          activePoiId={activePoiId}
+          hoveredPoiId={hoveredPoiId}
+          replacementTargetId={replacementTargetId}
+          editError={editError}
+          onPoiHover={onPoiHover}
+          onPoiSelect={onPoiSelect}
+          onStartReplacement={onStartReplacement}
+          onCancelReplacement={onCancelReplacement}
+          onEdit={onEditDraft}
+          onEditTrip={() => setIsEditingTrip(true)}
         />
+      ) : null}
+      {visibleDraft ? (
+        <div className={styles.tripStyleSection}>
+          <h3>Trip style</h3>
+          <TripPreferencesPanel
+            preferences={preferences}
+            disabled={isGenerating}
+            onPreferredCategoryChange={onPreferredCategoryChange}
+            onExcludedCategoryChange={onExcludedCategoryChange}
+            onDetourToleranceChange={onDetourToleranceChange}
+            onStopStyleChange={onStopStyleChange}
+          />
+        </div>
       ) : null}
     </section>
   );

@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import MapCanvas from "@/components/map/MapCanvas";
+import AlongTheWay from "@/components/trip/AlongTheWay";
 import TripIntentPanel from "@/components/trip/TripIntentPanel";
 import type {
   Coordinates,
+  DraftEditAction,
   PlannerState,
   PickingMode,
   TripDraft,
@@ -45,6 +47,12 @@ export default function TripPlanner() {
   const [stop, setStop] = useState<TripEndpoint | null>(null);
   const [destination, setDestination] = useState(initialDestination);
   const [pickingMode, setPickingMode] = useState<PickingMode>(null);
+  const [activePoiId, setActivePoiId] = useState<number | null>(null);
+  const [hoveredPoiId, setHoveredPoiId] = useState<number | null>(null);
+  const [replacementTargetId, setReplacementTargetId] = useState<number | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isAlongTheWayOpen, setIsAlongTheWayOpen] = useState(false);
+  const editRequestInFlight = useRef(false);
   const [preferences, setPreferences] = useState<TripPreferences>(() => ({
     ...DEFAULT_TRIP_PREFERENCES,
     preferredCategories: [],
@@ -222,6 +230,11 @@ export default function TripPlanner() {
       draft: nextDraft,
       isDirty: false,
     });
+    setActivePoiId(null);
+    setHoveredPoiId(null);
+    setReplacementTargetId(null);
+    setEditError(null);
+    setIsAlongTheWayOpen(false);
   }
 
   function finishDraftEdit(nextDraft: TripDraft) {
@@ -260,6 +273,58 @@ export default function TripPlanner() {
         ? plannerState.previousDraft
         : null;
 
+  async function editDraft(action: DraftEditAction) {
+    if (!visibleDraft || plannerState.status === "generating_draft" || editRequestInFlight.current) {
+      return;
+    }
+    editRequestInFlight.current = true;
+    setEditError(null);
+    startDraftGeneration();
+    try {
+      const response = await fetch("/api/draft/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draft: visibleDraft, action }),
+      });
+      if (!response.ok) {
+        throw new Error("Draft edit could not be routed.");
+      }
+      const nextDraft = (await response.json()) as TripDraft;
+      finishDraftEdit(nextDraft);
+      setReplacementTargetId(null);
+      setHoveredPoiId(null);
+      setActivePoiId(
+        action.type === "remove"
+          ? null
+          : action.type === "replace"
+            ? action.replacementAttractionId
+            : action.attractionId
+      );
+    } catch (reason) {
+      failDraftGeneration();
+      console.error("Failed to edit draft:", reason);
+      setEditError("The draft is unchanged because that edit could not be routed.");
+    } finally {
+      editRequestInFlight.current = false;
+    }
+  }
+
+  function selectPoi(attractionId: number) {
+    const isAlternative = visibleDraft?.alternatives.some(
+      (item) => item.attractionId === attractionId
+    );
+    setActivePoiId(attractionId);
+    if (!isAlternative) return;
+    setIsAlongTheWayOpen(true);
+    if (replacementTargetId !== null) {
+      void editDraft({
+        type: "replace",
+        attractionId: replacementTargetId,
+        replacementAttractionId: attractionId,
+      });
+    }
+  }
+
   return (
     <>
       <MapCanvas
@@ -272,7 +337,12 @@ export default function TripPlanner() {
         stopCoordinates={stop?.coordinates ?? null}
         destinationCoordinates={destination.coordinates}
         pickingMode={pickingMode}
+        activePoiId={activePoiId}
+        hoveredPoiId={hoveredPoiId}
+        isReplacing={replacementTargetId !== null}
         onMapPointSelected={selectMapPoint}
+        onPoiHover={setHoveredPoiId}
+        onPoiSelect={selectPoi}
       />
       <TripIntentPanel
         origin={origin}
@@ -288,13 +358,55 @@ export default function TripPlanner() {
         onRemoveStop={removeStop}
         onGenerationStarted={startDraftGeneration}
         onDraftBuilt={finishDraftGeneration}
-        onDraftEdited={finishDraftEdit}
         onGenerationFailed={failDraftGeneration}
         onPreferredCategoryChange={updatePreferredCategory}
         onExcludedCategoryChange={updateExcludedCategory}
         onDetourToleranceChange={updateDetourTolerance}
         onStopStyleChange={updateStopStyle}
+        activePoiId={activePoiId}
+        hoveredPoiId={hoveredPoiId}
+        replacementTargetId={replacementTargetId}
+        editError={editError}
+        onPoiHover={setHoveredPoiId}
+        onPoiSelect={selectPoi}
+        onStartReplacement={(attractionId) => {
+          setReplacementTargetId(attractionId);
+          setActivePoiId(attractionId);
+          setEditError(null);
+          setIsAlongTheWayOpen(true);
+        }}
+        onCancelReplacement={() => setReplacementTargetId(null)}
+        onEditDraft={editDraft}
       />
+      {visibleDraft && visibleDraft.alternatives.length > 0 ? (
+        <AlongTheWay
+          alternatives={visibleDraft.alternatives}
+          activePoiId={activePoiId}
+          hoveredPoiId={hoveredPoiId}
+          replacementTargetName={
+            visibleDraft.stops.find(
+              (stop) =>
+                stop.source !== "user" &&
+                stop.attractionId === replacementTargetId
+            )?.label ?? null
+          }
+          isEditing={plannerState.status === "generating_draft"}
+          isOpen={isAlongTheWayOpen}
+          onToggle={() => setIsAlongTheWayOpen((current) => !current)}
+          onPoiHover={setHoveredPoiId}
+          onPoiSelect={selectPoi}
+          onAdd={(attractionId) => void editDraft({ type: "add", attractionId })}
+          onReplace={(replacementAttractionId) => {
+            if (replacementTargetId === null) return;
+            void editDraft({
+              type: "replace",
+              attractionId: replacementTargetId,
+              replacementAttractionId,
+            });
+          }}
+          onCancelReplacement={() => setReplacementTargetId(null)}
+        />
+      ) : null}
     </>
   );
 }

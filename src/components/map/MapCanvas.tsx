@@ -22,7 +22,12 @@ type MapCanvasProps = {
   stopCoordinates: Coordinates | null;
   destinationCoordinates: Coordinates | null;
   pickingMode: PickingMode;
+  activePoiId: number | null;
+  hoveredPoiId: number | null;
+  isReplacing: boolean;
   onMapPointSelected: (field: TripField, coordinates: Coordinates) => void;
+  onPoiHover: (attractionId: number | null) => void;
+  onPoiSelect: (attractionId: number) => void;
 };
 
 const ROUTE_SOURCE_ID = "route";
@@ -92,6 +97,56 @@ function updateMarker(
   }
 }
 
+function updateEndpointMarker(
+  map: maplibregl.Map,
+  markerRef: React.MutableRefObject<maplibregl.Marker | null>,
+  coordinates: Coordinates | null,
+  label: "A" | "B",
+  color: string
+) {
+  if (!coordinates) {
+    markerRef.current?.remove();
+    markerRef.current = null;
+    return;
+  }
+  const lngLat: [number, number] = [coordinates.lon, coordinates.lat];
+  if (markerRef.current) {
+    markerRef.current.setLngLat(lngLat);
+    return;
+  }
+  const element = document.createElement("div");
+  element.textContent = label;
+  element.setAttribute("aria-label", label === "A" ? "Trip origin" : "Trip destination");
+  Object.assign(element.style, {
+    width: "28px",
+    height: "28px",
+    display: "grid",
+    placeItems: "center",
+    borderRadius: "50%",
+    border: "2px solid white",
+    background: color,
+    color: "white",
+    font: "700 13px sans-serif",
+    boxShadow: "0 2px 7px rgb(15 23 42 / 35%)",
+  });
+  markerRef.current = new maplibregl.Marker({ element })
+    .setLngLat(lngLat)
+    .addTo(map);
+}
+
+function setPoiMarkerPresentation(
+  marker: maplibregl.Marker,
+  emphasized: boolean,
+  selectable: boolean
+) {
+  const element = marker.getElement();
+  element.style.filter = emphasized
+    ? "drop-shadow(0 0 5px rgb(15 23 42 / 70%)) brightness(1.12)"
+    : "";
+  element.style.opacity = selectable || emphasized ? "1" : "0.82";
+  element.style.zIndex = emphasized ? "3" : "1";
+}
+
 export default function MapCanvas({
   route,
   attractionStops,
@@ -100,7 +155,12 @@ export default function MapCanvas({
   stopCoordinates,
   destinationCoordinates,
   pickingMode,
+  activePoiId,
+  hoveredPoiId,
+  isReplacing,
   onMapPointSelected,
+  onPoiHover,
+  onPoiSelect,
 }: MapCanvasProps) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const map = useRef<maplibregl.Map | null>(null);
@@ -109,6 +169,13 @@ export default function MapCanvas({
   const destinationMarker = useRef<maplibregl.Marker | null>(null);
   const waypostMarkers = useRef(new Map<number, maplibregl.Marker>());
   const alternativeMarkers = useRef(new Map<number, maplibregl.Marker>());
+  const onPoiHoverRef = useRef(onPoiHover);
+  const onPoiSelectRef = useRef(onPoiSelect);
+
+  useEffect(() => {
+    onPoiHoverRef.current = onPoiHover;
+    onPoiSelectRef.current = onPoiSelect;
+  }, [onPoiHover, onPoiSelect]);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) {
@@ -178,7 +245,13 @@ export default function MapCanvas({
       return;
     }
 
-    updateMarker(mapInstance, originMarker, originCoordinates, "#15803d");
+    updateEndpointMarker(
+      mapInstance,
+      originMarker,
+      originCoordinates,
+      "A",
+      "#15803d"
+    );
   }, [originCoordinates]);
 
   useEffect(() => {
@@ -198,10 +271,11 @@ export default function MapCanvas({
       return;
     }
 
-    updateMarker(
+    updateEndpointMarker(
       mapInstance,
       destinationMarker,
       destinationCoordinates,
+      "B",
       "#b42318"
     );
   }, [destinationCoordinates]);
@@ -226,13 +300,26 @@ export default function MapCanvas({
       if (existing) {
         existing.setLngLat(position);
       } else {
-        waypostMarkers.current.set(
-          stop.attractionId,
-          new maplibregl.Marker({ color: "#7c3aed", scale: 0.8 })
+        const popup = new maplibregl.Popup({ offset: 20 }).setText(stop.label);
+        popup.on("open", () => onPoiSelectRef.current(stop.attractionId));
+        const marker = new maplibregl.Marker({
+            color: stop.source === "waypost" ? "#7c3aed" : "#d97706",
+            scale: stop.source === "waypost" ? 0.8 : 0.9,
+          })
             .setLngLat(position)
-            .setPopup(new maplibregl.Popup({ offset: 20 }).setText(stop.label))
-            .addTo(mapInstance)
+            .setPopup(popup)
+            .addTo(mapInstance);
+        marker.getElement().setAttribute(
+          "aria-label",
+          `${stop.label} — ${stop.source === "waypost" ? "Waypost suggestion" : "Added by you"}`
         );
+        marker.getElement().addEventListener("mouseenter", () =>
+          onPoiHoverRef.current(stop.attractionId)
+        );
+        marker.getElement().addEventListener("mouseleave", () =>
+          onPoiHoverRef.current(null)
+        );
+        waypostMarkers.current.set(stop.attractionId, marker);
       }
     }
   }, [attractionStops]);
@@ -257,20 +344,58 @@ export default function MapCanvas({
       if (existing) {
         existing.setLngLat(position);
       } else {
-        alternativeMarkers.current.set(
-          alternative.attractionId,
-          new maplibregl.Marker({ color: "#64748b", scale: 0.5 })
-            .setLngLat(position)
-            .setPopup(
-              new maplibregl.Popup({ offset: 14 }).setText(
-                `${alternative.name} · Along the way`
-              )
-            )
-            .addTo(mapInstance)
+        const popup = new maplibregl.Popup({ offset: 14 }).setText(
+          `${alternative.name} · Along the way`
         );
+        popup.on("open", () =>
+          onPoiSelectRef.current(alternative.attractionId)
+        );
+        const marker = new maplibregl.Marker({ color: "#64748b", scale: 0.55 })
+            .setLngLat(position)
+            .setPopup(popup)
+            .addTo(mapInstance);
+        marker.getElement().setAttribute(
+          "aria-label",
+          `${alternative.name} — Along the way`
+        );
+        marker.getElement().addEventListener("mouseenter", () =>
+          onPoiHoverRef.current(alternative.attractionId)
+        );
+        marker.getElement().addEventListener("mouseleave", () =>
+          onPoiHoverRef.current(null)
+        );
+        alternativeMarkers.current.set(alternative.attractionId, marker);
       }
     }
   }, [alternatives]);
+
+  useEffect(() => {
+    const emphasizedId = hoveredPoiId ?? activePoiId;
+    for (const [id, marker] of waypostMarkers.current) {
+      setPoiMarkerPresentation(marker, id === emphasizedId, true);
+    }
+    for (const [id, marker] of alternativeMarkers.current) {
+      setPoiMarkerPresentation(marker, id === emphasizedId, isReplacing);
+    }
+  }, [activePoiId, hoveredPoiId, isReplacing, attractionStops, alternatives]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+    if (!mapInstance || activePoiId === null) return;
+    const selected = attractionStops.find(
+      (stop) => stop.attractionId === activePoiId
+    );
+    const alternative = alternatives.find(
+      (item) => item.attractionId === activePoiId
+    );
+    const coordinates = selected?.coordinates ?? alternative?.coordinates;
+    if (!coordinates) return;
+    mapInstance.easeTo({
+      center: [coordinates.lon, coordinates.lat],
+      zoom: Math.max(mapInstance.getZoom(), 8),
+      duration: 700,
+    });
+  }, [activePoiId, attractionStops, alternatives]);
 
   useEffect(() => {
     const mapInstance = map.current;

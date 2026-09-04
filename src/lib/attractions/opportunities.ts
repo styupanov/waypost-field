@@ -1,5 +1,6 @@
 import "server-only";
 import { findAttractionCandidates, findDatasetMeanRating } from "@/lib/attractions/candidates";
+import { deduplicateAttractionCandidates } from "@/lib/attractions/deduplication";
 import {
   calculateOpportunityScore,
   MAX_DETOUR_DISTANCE_KM,
@@ -96,7 +97,14 @@ export async function findAttractionOpportunities({ locations, route, corridorMe
     }),
     findDatasetMeanRating(),
   ]);
-  const shortlist = shortlistCandidates(candidateResult.candidates, datasetMeanRating, corridorMeters);
+  const deduplicated = deduplicateAttractionCandidates(
+    candidateResult.candidates
+  );
+  const shortlist = shortlistCandidates(
+    deduplicated.candidates,
+    datasetMeanRating,
+    corridorMeters
+  );
   if (shortlist.length === 0) return { opportunities: [] };
 
   const baseline = await calculateRoute(locations);

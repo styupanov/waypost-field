@@ -6,11 +6,13 @@ import type { PersonalizedAttractionOpportunity } from "@/types/attractions";
 import type {
   DraftEndpoint,
   DraftStop,
+  DraftUserAttractionStop,
   TripAlternative,
   TripDraft,
 } from "@/types/trip";
 import type { TripPreferences } from "@/types/preferences";
 import type { RouteFeature, RoutePoint, RouteResponse } from "@/types/route";
+import { calculateTripDayRecommendation } from "@/lib/trip/multi-day";
 
 export const COMPOSITION_CORRIDOR_METERS = 25_000;
 export const DRIVING_DETOUR_BUDGET_RATIO = 0.15;
@@ -24,6 +26,7 @@ type DraftCompositionRequest = {
   stop: DraftEndpoint | null;
   destination: DraftEndpoint;
   preferences: TripPreferences;
+  hardUserAttractions?: DraftUserAttractionStop[];
 };
 
 type PositionedOpportunity = PersonalizedAttractionOpportunity & {
@@ -217,6 +220,10 @@ function waypointSequence(
     tieBreaker: opportunity.attraction.id,
   }));
 
+  for (const attraction of request.hardUserAttractions ?? []) {
+    entries.push({ progress: calculateRouteProgress(baselineRoute, attraction.coordinates), point: attraction.coordinates, stop: attraction, tieBreaker: attraction.attractionId });
+  }
+
   if (request.stop) {
     entries.push({
       progress: calculateRouteProgress(baselineRoute, request.stop.coordinates),
@@ -265,12 +272,17 @@ export function suggestedVisitDuration(stops: DraftStop[]) {
 export async function composeTripDraft(
   request: DraftCompositionRequest
 ): Promise<TripDraft> {
-  const hardLocations = [
+  const skeletonLocations = [
     request.origin.coordinates,
     ...(request.stop ? [request.stop.coordinates] : []),
     request.destination.coordinates,
   ];
-  const baseline = await calculateRoute(hardLocations);
+  const baseline = await calculateRoute(skeletonLocations);
+  const baselineRouteCalls = 1;
+  const hardDraftStops: DraftStop[] = [
+    ...(request.stop ? [{ ...request.stop, source: "user" as const }] : []),
+    ...(request.hardUserAttractions ?? []),
+  ].sort((left, right) => calculateRouteProgress(baseline.route, left.coordinates) - calculateRouteProgress(baseline.route, right.coordinates));
   const target = targetPoiCount(baseline.summary.durationSeconds);
   const detourBudgetSeconds = Math.min(
     baseline.summary.durationSeconds * DRIVING_DETOUR_BUDGET_RATIO,
@@ -278,7 +290,7 @@ export async function composeTripDraft(
   );
   const opportunityResult = await findAttractionOpportunities(
     {
-      locations: hardLocations,
+      locations: skeletonLocations,
       route: baseline.route.geometry,
       corridorMeters: COMPOSITION_CORRIDOR_METERS,
       preferences: request.preferences,
@@ -288,7 +300,8 @@ export async function composeTripDraft(
 
   const positioned = opportunityResult.opportunities
     .filter((opportunity) =>
-      opportunity.personalizedScore >= MIN_PERSONALIZED_SCORE
+      opportunity.personalizedScore >= MIN_PERSONALIZED_SCORE &&
+      !(request.hardUserAttractions ?? []).some((stop) => stop.attractionId === opportunity.attraction.id)
     )
     .map((opportunity) => ({
       ...opportunity,
@@ -299,12 +312,18 @@ export async function composeTripDraft(
     }));
   let selected = selectDistributedOpportunities(positioned, target);
   let finalRoute: RouteResponse = baseline;
-  let finalStops: DraftStop[] = request.stop
-    ? [{ ...request.stop, source: "user" }]
-    : [];
+  let finalStops: DraftStop[] = hardDraftStops;
   let actualDetourSeconds = 0;
   let actualDetourWasClamped = false;
   let compositionRouteCalls = 0;
+
+  if ((request.hardUserAttractions ?? []).length > 0) {
+    const hardSequence = waypointSequence(request, [], baseline.route);
+    finalRoute = await calculateRoute(hardSequence.locations);
+    finalStops = hardSequence.stops;
+    compositionRouteCalls += 1;
+    actualDetourSeconds = Math.max(0, finalRoute.summary.durationSeconds - baseline.summary.durationSeconds);
+  }
 
   while (selected.length > 0) {
     const sequence = waypointSequence(request, selected, baseline.route);
@@ -324,9 +343,7 @@ export async function composeTripDraft(
   }
 
   if (selected.length === 0) {
-    finalRoute = baseline;
-    actualDetourSeconds = 0;
-    actualDetourWasClamped = false;
+    actualDetourWasClamped = finalRoute.summary.durationSeconds < baseline.summary.durationSeconds;
   }
 
   const selectedAttractionIds = new Set(
@@ -348,7 +365,11 @@ export async function composeTripDraft(
     route: finalRoute.route,
     summary: finalRoute.summary,
     stops: finalStops,
-    preferences: request.preferences,
+    preferences: {
+      ...request.preferences,
+      selectedTripDays: calculateTripDayRecommendation(baseline.summary.durationSeconds, request.preferences).selectedDays,
+    },
+    multiDay: calculateTripDayRecommendation(baseline.summary.durationSeconds, request.preferences),
     alternatives,
     lastEdit: null,
     composition: {
@@ -358,7 +379,7 @@ export async function composeTripDraft(
       actualDetourSeconds,
       actualDetourWasClamped,
       valhallaCallCount:
-        1 + opportunityResult.candidateRoutesEvaluated + compositionRouteCalls,
+        baselineRouteCalls + opportunityResult.candidateRoutesEvaluated + compositionRouteCalls,
       corridorCandidateCount:
         opportunityResult.diagnostics.corridorCandidateCount,
       candidateCountConsidered:

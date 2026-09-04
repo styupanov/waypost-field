@@ -4,7 +4,7 @@ import { DatabaseConfigurationError } from "@/lib/db/postgres";
 import { RoutingServiceError } from "@/lib/routing/valhalla";
 import { composeTripDraft } from "@/lib/trip/composition";
 import { parseTripPreferences } from "@/lib/trip/preferences-validation";
-import type { DraftEndpoint } from "@/types/trip";
+import type { DraftEndpoint, DraftUserAttractionStop } from "@/types/trip";
 import { authenticatedWaypostUserId } from "@/lib/auth/session";
 import { assertTripOwnership, saveOwnedCurrentDraftVersion } from "@/lib/trips/repository";
 import { TripPersistenceError } from "@/lib/trips/repository";
@@ -47,6 +47,9 @@ export async function POST(request: Request) {
   const destination = parseEndpoint(body.destination);
   const preferences = parseTripPreferences(body.preferences);
   const ownedTripId = typeof body.ownedTripId === "string" ? body.ownedTripId : null;
+  const hardUserAttractions = Array.isArray(body.hardUserAttractions)
+    ? body.hardUserAttractions.filter((stop): stop is DraftUserAttractionStop => isRecord(stop) && stop.source === "user_attraction")
+    : [];
   if (!origin || (body.stop !== null && body.stop !== undefined && !stop) || !destination || !preferences) {
     return errorResponse("INVALID_DRAFT_REQUEST", "Valid trip endpoints and preferences are required.", 400);
   }
@@ -58,7 +61,7 @@ export async function POST(request: Request) {
       if (!userId) return errorResponse("UNAUTHORIZED", "Sign in is required.", 401);
       await assertTripOwnership(userId, ownedTripId);
     }
-    const draft = await composeTripDraft({ origin, stop, destination, preferences });
+    const draft = await composeTripDraft({ origin, stop, destination, preferences, hardUserAttractions });
     if (ownedTripId && userId) await saveOwnedCurrentDraftVersion(userId, ownedTripId, draft);
     return NextResponse.json(draft);
   } catch (reason) {

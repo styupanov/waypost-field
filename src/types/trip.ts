@@ -39,6 +39,17 @@ export type TripDraft = {
   preferences: TripPreferences;
   alternatives: TripAlternative[];
   lastEdit: DraftEditImpact | null;
+  multiDay: MultiDayPlan;
+};
+
+export type MultiDayPlan = {
+  isMultiDay: boolean;
+  drivingPace: import("@/types/preferences").DrivingPace;
+  recommendedDays: number;
+  selectedDays: number;
+  nights: number;
+  baselineDrivingHours: number;
+  dayOptions: number[];
 };
 
 export type DraftUserStop = DraftEndpoint & {

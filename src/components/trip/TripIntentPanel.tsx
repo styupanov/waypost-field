@@ -23,6 +23,7 @@ import type {
   InterestCategory,
   StopStyle,
   TripPreferences,
+  DrivingPace,
 } from "@/types/preferences";
 
 type TripIntentPanelProps = {
@@ -48,6 +49,8 @@ type TripIntentPanelProps = {
   onExcludedCategoryChange: (category: InterestCategory, selected: boolean) => void;
   onDetourToleranceChange: (value: DetourTolerance) => void;
   onStopStyleChange: (value: StopStyle) => void;
+  onDrivingPaceChange: (value: DrivingPace) => void;
+  onTripDaysChange: (days: number) => void;
   activePoiId: number | null;
   hoveredPoiId: number | null;
   replacementTargetId: number | null;
@@ -136,6 +139,8 @@ export default function TripIntentPanel({
   onExcludedCategoryChange,
   onDetourToleranceChange,
   onStopStyleChange,
+  onDrivingPaceChange,
+  onTripDaysChange,
   activePoiId,
   hoveredPoiId,
   replacementTargetId,
@@ -220,6 +225,7 @@ export default function TripIntentPanel({
           destination: resolvedDestination,
           preferences,
           ownedTripId,
+          hardUserAttractions: visibleDraft?.stops.filter((item) => item.source === "user_attraction") ?? [],
         }),
       });
 
@@ -359,6 +365,8 @@ export default function TripIntentPanel({
             onExcludedCategoryChange={onExcludedCategoryChange}
             onDetourToleranceChange={onDetourToleranceChange}
             onStopStyleChange={onStopStyleChange}
+            onDrivingPaceChange={onDrivingPaceChange}
+            onTripDaysChange={onTripDaysChange}
           />
         ) : null}
 
@@ -415,6 +423,9 @@ export default function TripIntentPanel({
             onExcludedCategoryChange={onExcludedCategoryChange}
             onDetourToleranceChange={onDetourToleranceChange}
             onStopStyleChange={onStopStyleChange}
+            baselineDurationSeconds={visibleDraft.baselineSummary.durationSeconds}
+            onDrivingPaceChange={onDrivingPaceChange}
+            onTripDaysChange={onTripDaysChange}
           />
         </div>
       ) : null}

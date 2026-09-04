@@ -11,6 +11,7 @@ import {
 import { findAttractionOpportunities } from "@/lib/attractions/opportunities";
 import type { TripAlternative, TripDraft, DraftStop } from "@/types/trip";
 import type { PersistedTrip, PersistedTripStop } from "@/types/trip-persistence";
+import { calculateTripDayRecommendation, normalizePlanningPreferences } from "@/lib/trip/multi-day";
 
 function reconstructedStop(stop: PersistedTripStop): DraftStop {
   if (stop.stopType === "waypoint") {
@@ -54,6 +55,8 @@ export function reconstructTripDraft(trip: PersistedTrip): TripDraft {
   const userStops = stops.filter((stop) => stop.source === "user");
   if (userStops.length > 1) throw new Error("Persisted trip has unsupported user stop count.");
   const baselineSeconds = version.baselineSummary.durationSeconds;
+  const preferences = normalizePlanningPreferences(version.preferences);
+  const multiDay = calculateTripDayRecommendation(baselineSeconds, preferences);
   return {
     origin: { label: origin.label, coordinates: origin.coordinates },
     stop: userStops[0]
@@ -64,7 +67,8 @@ export function reconstructTripDraft(trip: PersistedTrip): TripDraft {
     summary: version.summary,
     baselineSummary: version.baselineSummary,
     stops,
-    preferences: version.preferences,
+    preferences: { ...preferences, selectedTripDays: multiDay.selectedDays },
+    multiDay,
     alternatives: [],
     lastEdit: null,
     composition: {

@@ -787,6 +787,14 @@
   font-size: 12px;
   line-height: 1.4;
 }
+.multiDay { display: grid; gap: 9px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
+.multiDay h4, .multiDay p { margin: 0; }
+.multiDay h4 { color: #334155; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.multiDay p { color: #64748b; font-size: 11px; }
+.dayChoices, .paceChoices { display: grid; gap: 6px; }
+.dayChoices label, .paceChoices label { display: flex; gap: 6px; align-items: flex-start; font-size: 11px; }
+.paceChoices span, .paceChoices small { display: block; }
+.paceChoices small { margin-top: 1px; color: #64748b; font-weight: 400; }
 
 .ownershipAction { display: grid; gap: 5px; }
 .ownershipAction span { color: #166534; font-size: 12px; font-weight: 700; }

@@ -22,7 +22,9 @@ import {
   type InterestCategory,
   type StopStyle,
   type TripPreferences,
+  type DrivingPace,
 } from "@/types/preferences";
+import { calculateTripDayRecommendation } from "@/lib/trip/multi-day";
 
 const initialOrigin: TripEndpoint = {
   input: "Charlotte, NC",
@@ -143,6 +145,19 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
 
   function updateStopStyle(stopStyle: StopStyle) {
     updatePreferences((current) => ({ ...current, stopStyle }));
+  }
+
+  function updateDrivingPace(drivingPace: DrivingPace) {
+    updatePreferences((current) => {
+      const changed = { ...current, drivingPace };
+      if (!visibleDraft) return changed;
+      const plan = calculateTripDayRecommendation(visibleDraft.baselineSummary.durationSeconds, changed);
+      return { ...changed, selectedTripDays: plan.selectedDays };
+    });
+  }
+
+  function updateTripDays(selectedTripDays: number) {
+    updatePreferences((current) => ({ ...current, selectedTripDays, tripDaysOverridden: true }));
   }
 
   function updateEndpointInput(field: TripField, input: string) {
@@ -278,6 +293,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
     setReplacementTargetId(null);
     setEditError(null);
     setIsAlongTheWayOpen(false);
+    setPreferences(nextDraft.preferences);
     if (ownedTripId) setOwnershipStatus("saved");
   }
 
@@ -426,6 +442,8 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
         onExcludedCategoryChange={updateExcludedCategory}
         onDetourToleranceChange={updateDetourTolerance}
         onStopStyleChange={updateStopStyle}
+        onDrivingPaceChange={updateDrivingPace}
+        onTripDaysChange={updateTripDays}
         activePoiId={activePoiId}
         hoveredPoiId={hoveredPoiId}
         replacementTargetId={replacementTargetId}

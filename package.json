@@ -9,7 +9,8 @@
     "lint": "eslint",
     "db:migrate": "node --env-file=.env.local scripts/migrate.mjs",
     "db:verify-persistence": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-trip-persistence.ts",
-    "db:verify-ownership": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-auth-ownership.ts"
+    "db:verify-ownership": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-auth-ownership.ts",
+    "test:multi-day": "node --experimental-strip-types scripts/verify-multi-day.ts"
   },
   "dependencies": {
     "maplibre-gl": "^6.7.0",

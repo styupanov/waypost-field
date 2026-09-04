@@ -4,7 +4,9 @@ import type {
   InterestCategory,
   StopStyle,
   TripPreferences,
+  DrivingPace,
 } from "@/types/preferences";
+import { calculateTripDayRecommendation } from "@/lib/trip/multi-day";
 
 const CATEGORY_OPTIONS: { value: InterestCategory; label: string }[] = [
   { value: "nature_scenic", label: "Nature & Scenic" },
@@ -38,6 +40,9 @@ type TripPreferencesPanelProps = {
   onExcludedCategoryChange: (category: InterestCategory, selected: boolean) => void;
   onDetourToleranceChange: (value: DetourTolerance) => void;
   onStopStyleChange: (value: StopStyle) => void;
+  baselineDurationSeconds?: number;
+  onDrivingPaceChange: (value: DrivingPace) => void;
+  onTripDaysChange: (days: number) => void;
 };
 
 function summaryFor(preferences: TripPreferences) {
@@ -45,7 +50,9 @@ function summaryFor(preferences: TripPreferences) {
     preferences.preferredCategories.length === 0 &&
     preferences.excludedCategories.length === 0 &&
     preferences.detourTolerance === "balanced" &&
-    preferences.stopStyle === "balanced"
+    preferences.stopStyle === "balanced" &&
+    preferences.drivingPace === "balanced" &&
+    !preferences.tripDaysOverridden
   ) return "Balanced trip";
 
   const preferredLabels = preferences.preferredCategories.map(
@@ -54,7 +61,9 @@ function summaryFor(preferences: TripPreferences) {
   const detourLabel = DETOUR_OPTIONS.find(
     (option) => option.value === preferences.detourTolerance
   )?.summaryLabel;
-  return [...preferredLabels, detourLabel].filter(Boolean).join(" · ");
+  const paceLabel = preferences.drivingPace === "easy" ? "Easy pace" : preferences.drivingPace === "road_trip" ? "Road trip pace" : null;
+  const daysLabel = preferences.tripDaysOverridden && preferences.selectedTripDays ? `${preferences.selectedTripDays} days` : null;
+  return [...preferredLabels, detourLabel, paceLabel, daysLabel].filter(Boolean).join(" · ");
 }
 
 export default function TripPreferencesPanel({
@@ -64,7 +73,11 @@ export default function TripPreferencesPanel({
   onExcludedCategoryChange,
   onDetourToleranceChange,
   onStopStyleChange,
+  baselineDurationSeconds,
+  onDrivingPaceChange,
+  onTripDaysChange,
 }: TripPreferencesPanelProps) {
+  const multiDay = baselineDurationSeconds === undefined ? null : calculateTripDayRecommendation(baselineDurationSeconds, preferences);
   return (
     <details className={styles.preferences}>
       <summary>
@@ -142,6 +155,18 @@ export default function TripPreferencesPanel({
             ))}
           </div>
         </fieldset>
+
+        {multiDay?.isMultiDay ? <section className={styles.multiDay}>
+          <h4>Multi-day trip</h4>
+          <p>≈ {Math.round(multiDay.baselineDrivingHours)} h driving</p>
+          <p><strong>Suggested</strong> {multiDay.recommendedDays} days · {Math.max(0, multiDay.recommendedDays - 1)} nights</p>
+          <fieldset disabled={disabled}><legend>Trip length</legend><div className={styles.dayChoices}>{multiDay.dayOptions.map((days) => <label key={days}><input type="radio" name="trip-days" checked={multiDay.selectedDays === days} onChange={() => onTripDaysChange(days)} />{days} days{days === multiDay.recommendedDays ? " · Recommended" : ""}</label>)}</div></fieldset>
+          <fieldset disabled={disabled}><legend>Driving pace</legend><div className={styles.paceChoices}>{([
+            ["easy", "Easy", "More exploring, shorter driving days"],
+            ["balanced", "Balanced", "Driving + exploring"],
+            ["road_trip", "Road trip", "Long driving days are OK"],
+          ] as const).map(([value, label, description]) => <label key={value}><input type="radio" name="driving-pace" checked={preferences.drivingPace === value} onChange={() => onDrivingPaceChange(value as DrivingPace)} /><span><strong>{label}</strong><small>{description}</small></span></label>)}</div></fieldset>
+        </section> : null}
       </div>
     </details>
   );

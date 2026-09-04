@@ -35,6 +35,9 @@ export function parseTripPreferences(
     excludedCategories,
     detourTolerance,
     stopStyle,
+    drivingPace = "balanced",
+    selectedTripDays = null,
+    tripDaysOverridden = false,
   } = value;
   if (
     !Array.isArray(preferredCategories) ||
@@ -49,7 +52,10 @@ export function parseTripPreferences(
     new Set(excludedCategories).size !== excludedCategories.length ||
     preferredCategories.some((category) => excludedCategories.includes(category)) ||
     !["low", "balanced", "high"].includes(detourTolerance as string) ||
-    !["quick", "balanced", "longer"].includes(stopStyle as string)
+    !["quick", "balanced", "longer"].includes(stopStyle as string) ||
+    !["easy", "balanced", "road_trip"].includes(drivingPace as string) ||
+    !(selectedTripDays === null || (typeof selectedTripDays === "number" && Number.isSafeInteger(selectedTripDays) && selectedTripDays > 0)) ||
+    typeof tripDaysOverridden !== "boolean"
   ) return null;
 
   return {
@@ -57,5 +63,8 @@ export function parseTripPreferences(
     excludedCategories: excludedCategories as InterestCategory[],
     detourTolerance: detourTolerance as TripPreferences["detourTolerance"],
     stopStyle: stopStyle as TripPreferences["stopStyle"],
+    drivingPace: drivingPace as TripPreferences["drivingPace"],
+    selectedTripDays,
+    tripDaysOverridden,
   };
 }

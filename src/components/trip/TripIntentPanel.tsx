@@ -1,15 +1,19 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
+import DraftSummary from "@/components/trip/DraftSummary";
 import styles from "./TripIntentPanel.module.css";
 import type {
   GeocodingResponse,
   GeocodingResult,
 } from "@/types/geocoding";
-import type { RouteFeature } from "@/types/route";
+import type { RouteResponse } from "@/types/route";
 import type {
   Coordinates,
+  DraftEndpoint,
+  PlannerState,
   PickingMode,
+  TripDraft,
   TripEndpoint,
   TripField,
 } from "@/types/trip";
@@ -17,18 +21,18 @@ import type {
 type TripIntentPanelProps = {
   origin: TripEndpoint;
   destination: TripEndpoint;
+  plannerState: PlannerState;
   pickingMode: PickingMode;
   onInputChange: (field: TripField, value: string) => void;
   onPickingModeChange: (mode: PickingMode) => void;
   onCoordinatesResolved: (
     field: TripField,
-    coordinates: Coordinates
+    coordinates: Coordinates,
+    resolvedLabel: string
   ) => void;
-  onRouteBuilt: (route: RouteFeature) => void;
-};
-
-type RouteResponse = {
-  route: RouteFeature;
+  onGenerationStarted: () => void;
+  onDraftBuilt: (draft: TripDraft) => void;
+  onGenerationFailed: () => void;
 };
 
 class TripBuildError extends Error {
@@ -72,31 +76,55 @@ async function resolveEndpoint(
   endpoint: TripEndpoint,
   field: TripField,
   onCoordinatesResolved: TripIntentPanelProps["onCoordinatesResolved"]
-): Promise<Coordinates> {
+): Promise<DraftEndpoint> {
   if (endpoint.coordinates) {
-    return endpoint.coordinates;
+    return {
+      label: endpoint.resolvedLabel ?? endpoint.input,
+      coordinates: endpoint.coordinates,
+    };
   }
 
   const result = await geocodePlace(endpoint.input.trim(), field);
   const coordinates = { lat: result.lat, lon: result.lon };
-  onCoordinatesResolved(field, coordinates);
-  return coordinates;
+  onCoordinatesResolved(field, coordinates, result.label);
+  return { label: result.label, coordinates };
 }
 
 export default function TripIntentPanel({
   origin,
   destination,
+  plannerState,
   pickingMode,
   onInputChange,
   onPickingModeChange,
   onCoordinatesResolved,
-  onRouteBuilt,
+  onGenerationStarted,
+  onDraftBuilt,
+  onGenerationFailed,
 }: TripIntentPanelProps) {
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestInFlight = useRef(false);
+  const isGenerating = plannerState.status === "generating_draft";
+  const visibleDraft =
+    plannerState.status === "draft_ready"
+      ? plannerState.draft
+      : plannerState.status === "generating_draft"
+        ? plannerState.previousDraft
+        : null;
+  const visibleDraftIsDirty =
+    plannerState.status === "draft_ready"
+      ? plannerState.isDirty
+      : plannerState.status === "generating_draft"
+        ? plannerState.previousIsDirty
+        : false;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isGenerating || requestInFlight.current) {
+      return;
+    }
+
     setError(null);
 
     if (!origin.input.trim() || !destination.input.trim()) {
@@ -104,15 +132,16 @@ export default function TripIntentPanel({
       return;
     }
 
-    setIsLoading(true);
+    requestInFlight.current = true;
+    onGenerationStarted();
 
     try {
-      const originCoordinates = await resolveEndpoint(
+      const resolvedOrigin = await resolveEndpoint(
         origin,
         "origin",
         onCoordinatesResolved
       );
-      const destinationCoordinates = await resolveEndpoint(
+      const resolvedDestination = await resolveEndpoint(
         destination,
         "destination",
         onCoordinatesResolved
@@ -124,7 +153,10 @@ export default function TripIntentPanel({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          locations: [originCoordinates, destinationCoordinates],
+          locations: [
+            resolvedOrigin.coordinates,
+            resolvedDestination.coordinates,
+          ],
         }),
       });
 
@@ -135,8 +167,14 @@ export default function TripIntentPanel({
       }
 
       const data = (await response.json()) as RouteResponse;
-      onRouteBuilt(data.route);
+      onDraftBuilt({
+        origin: resolvedOrigin,
+        destination: resolvedDestination,
+        route: data.route,
+        summary: data.summary,
+      });
     } catch (reason) {
+      onGenerationFailed();
       console.error("Failed to build route:", reason);
       setError(
         reason instanceof TripBuildError
@@ -144,7 +182,7 @@ export default function TripIntentPanel({
           : "Unable to build the route. Please try again."
       );
     } finally {
-      setIsLoading(false);
+      requestInFlight.current = false;
     }
   }
 
@@ -162,7 +200,7 @@ export default function TripIntentPanel({
             <input
               name="origin"
               value={origin.input}
-              disabled={isLoading}
+              disabled={isGenerating}
               onChange={(event) =>
                 onInputChange("origin", event.target.value)
               }
@@ -171,7 +209,7 @@ export default function TripIntentPanel({
           <button
             className={styles.pickButton}
             type="button"
-            disabled={isLoading}
+            disabled={isGenerating}
             aria-pressed={pickingMode === "origin"}
             onClick={() => togglePickingMode("origin")}
           >
@@ -187,7 +225,7 @@ export default function TripIntentPanel({
             <input
               name="destination"
               value={destination.input}
-              disabled={isLoading}
+              disabled={isGenerating}
               onChange={(event) =>
                 onInputChange("destination", event.target.value)
               }
@@ -196,7 +234,7 @@ export default function TripIntentPanel({
           <button
             className={styles.pickButton}
             type="button"
-            disabled={isLoading}
+            disabled={isGenerating}
             aria-pressed={pickingMode === "destination"}
             onClick={() => togglePickingMode("destination")}
           >
@@ -206,8 +244,8 @@ export default function TripIntentPanel({
           </button>
         </div>
 
-        <button type="submit" disabled={isLoading || pickingMode !== null}>
-          {isLoading ? "Building route…" : "Build route"}
+        <button type="submit" disabled={isGenerating || pickingMode !== null}>
+          {isGenerating ? "Building route…" : "Build route"}
         </button>
 
         {error ? (
@@ -216,6 +254,9 @@ export default function TripIntentPanel({
           </p>
         ) : null}
       </form>
+      {visibleDraft ? (
+        <DraftSummary draft={visibleDraft} isDirty={visibleDraftIsDirty} />
+      ) : null}
     </section>
   );
 }

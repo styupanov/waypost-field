@@ -6,3 +6,16 @@ export type RouteFeature = {
     coordinates: [number, number][];
   };
 };
+
+export type RouteSummary = {
+  distanceKm: number;
+  durationSeconds: number;
+  hasToll: boolean;
+  hasHighway: boolean;
+  hasFerry: boolean;
+};
+
+export type RouteResponse = {
+  route: RouteFeature;
+  summary: RouteSummary;
+};

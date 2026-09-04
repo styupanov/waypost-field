@@ -95,3 +95,99 @@
   font-size: 13px;
   line-height: 1.4;
 }
+
+.draftSummary {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.draftHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.draftHeading h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.draftHeading span {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.draftRoute {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.draftRoute span:last-child {
+  text-align: right;
+}
+
+.draftMetrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.draftMetrics div {
+  padding: 9px;
+  border-radius: 7px;
+  background: #f8fafc;
+}
+
+.draftMetrics dt {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.draftMetrics dd {
+  margin: 3px 0 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.routeIndicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.routeIndicators li {
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: #f1f5f9;
+  font-size: 11px;
+}
+
+.draftNotice,
+.dirtyNotice {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.draftNotice {
+  color: #64748b;
+}
+
+.dirtyNotice {
+  color: #b45309;
+  font-weight: 650;
+}

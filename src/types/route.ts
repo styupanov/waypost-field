@@ -19,3 +19,8 @@ export type RouteResponse = {
   route: RouteFeature;
   summary: RouteSummary;
 };
+
+export type RoutePoint = {
+  lat: number;
+  lon: number;
+};

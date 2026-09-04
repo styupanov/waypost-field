@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import styles from "./TripIntentPanel.module.css";
-import type { DraftAttractionStop, TripDraft } from "@/types/trip";
+import { isOvernightStop, type DraftAttractionStop, type TripDraft } from "@/types/trip";
 
 type RouteStopsProps = {
   draft: TripDraft;
@@ -112,7 +112,12 @@ export default function RouteStops({
           <div><strong>{draft.origin.label}</strong><small>Origin</small></div>
         </li>
         {draft.stops.map((stop, index) =>
-          stop.source === "user" ? (
+          isOvernightStop(stop) ? (
+            <li className={styles.userStop} key={`overnight-${stop.nightIndex}`}>
+              <span className={`${styles.routeNode} ${styles.overnightNode}`}>{stop.nightIndex}</span>
+              <div><strong>{stop.label}{stop.admin1Code ? `, ${stop.admin1Code}` : ""} area</strong><small>Night {stop.nightIndex} · approximate overnight area</small></div>
+            </li>
+          ) : stop.source === "user" ? (
             <li className={styles.userStop} key={`user-${index}-${stop.label}`}>
               <span className={`${styles.routeNode} ${styles.userStopNode}`}>•</span>
               <div><strong>{stop.label}</strong><small>User stop</small></div>

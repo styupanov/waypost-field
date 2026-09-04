@@ -4,6 +4,7 @@ import type {
   VisitDuration,
 } from "@/types/attractions";
 import type { TripPreferences } from "@/types/preferences";
+import type { OvernightNightCandidates } from "@/types/overnights";
 
 export type Coordinates = {
   lat: number;
@@ -34,12 +35,13 @@ export type TripDraft = {
   route: RouteFeature;
   summary: RouteSummary;
   baselineSummary: RouteSummary;
-  stops: DraftStop[];
+  stops: ItineraryStop[];
   composition: DraftComposition;
   preferences: TripPreferences;
   alternatives: TripAlternative[];
   lastEdit: DraftEditImpact | null;
   multiDay: MultiDayPlan;
+  overnightAlternatives: OvernightNightCandidates[];
 };
 
 export type MultiDayPlan = {
@@ -82,6 +84,29 @@ export type DraftAttractionStop =
   | DraftUserAttractionStop;
 
 export type DraftStop = DraftUserStop | DraftAttractionStop;
+
+export type DraftOvernightStop = {
+  type: "overnight";
+  source: "waypost" | "user";
+  nightIndex: number;
+  geonameId: number;
+  label: string;
+  admin1Code: string | null;
+  countryCode: string;
+  featureCode: string;
+  population: number;
+  coordinates: Coordinates;
+  targetDrivingSeconds: number;
+  arrivalDrivingSeconds: number;
+  targetTimeDeviationMinutes: number;
+  detourDurationSeconds: number;
+  detourDistanceKm: number;
+  score: number;
+};
+
+export type ItineraryStop = DraftStop | DraftOvernightStop;
+export function isOvernightStop(stop: ItineraryStop): stop is DraftOvernightStop { return "type" in stop && stop.type === "overnight"; }
+export function isAttractionStop(stop: ItineraryStop): stop is DraftAttractionStop { return !isOvernightStop(stop) && stop.source !== "user"; }
 
 export type TripAlternative = {
   attractionId: number;

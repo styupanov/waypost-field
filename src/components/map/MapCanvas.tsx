@@ -7,6 +7,7 @@ import type { RouteFeature } from "@/types/route";
 import type {
   Coordinates,
   DraftAttractionStop,
+  DraftOvernightStop,
   PickingMode,
   TripField,
 } from "@/types/trip";
@@ -18,6 +19,7 @@ type MapCanvasProps = {
   route: RouteFeature | null;
   attractionStops: DraftAttractionStop[];
   alternatives: TripAlternative[];
+  overnightStops: DraftOvernightStop[];
   originCoordinates: Coordinates | null;
   stopCoordinates: Coordinates | null;
   destinationCoordinates: Coordinates | null;
@@ -151,6 +153,7 @@ export default function MapCanvas({
   route,
   attractionStops,
   alternatives,
+  overnightStops,
   originCoordinates,
   stopCoordinates,
   destinationCoordinates,
@@ -169,6 +172,7 @@ export default function MapCanvas({
   const destinationMarker = useRef<maplibregl.Marker | null>(null);
   const waypostMarkers = useRef(new Map<number, maplibregl.Marker>());
   const alternativeMarkers = useRef(new Map<number, maplibregl.Marker>());
+  const overnightMarkers = useRef(new Map<number, maplibregl.Marker>());
   const onPoiHoverRef = useRef(onPoiHover);
   const onPoiSelectRef = useRef(onPoiSelect);
 
@@ -192,6 +196,7 @@ export default function MapCanvas({
     map.current = mapInstance;
     const managedWaypostMarkers = waypostMarkers.current;
     const managedAlternativeMarkers = alternativeMarkers.current;
+    const managedOvernightMarkers = overnightMarkers.current;
 
     mapInstance.on("error", (event) => {
       console.error("MapLibre error:", event.error);
@@ -210,6 +215,8 @@ export default function MapCanvas({
       managedWaypostMarkers.clear();
       for (const marker of managedAlternativeMarkers.values()) marker.remove();
       managedAlternativeMarkers.clear();
+      for (const marker of managedOvernightMarkers.values()) marker.remove();
+      managedOvernightMarkers.clear();
       originMarker.current = null;
       stopMarker.current = null;
       destinationMarker.current = null;
@@ -368,6 +375,23 @@ export default function MapCanvas({
       }
     }
   }, [alternatives]);
+
+  useEffect(() => {
+    const mapInstance = map.current; if (!mapInstance) return;
+    const active = new Set(overnightStops.map((stop) => stop.nightIndex));
+    for (const [night, marker] of overnightMarkers.current) if (!active.has(night)) { marker.remove(); overnightMarkers.current.delete(night); }
+    for (const stop of overnightStops) {
+      const position: [number, number] = [stop.coordinates.lon, stop.coordinates.lat];
+      const existing = overnightMarkers.current.get(stop.nightIndex);
+      if (existing) existing.setLngLat(position);
+      else {
+        const element = document.createElement("div"); element.textContent = String(stop.nightIndex); element.setAttribute("aria-label", `Night ${stop.nightIndex}: ${stop.label} area`);
+        Object.assign(element.style, { width: "25px", height: "25px", display: "grid", placeItems: "center", borderRadius: "6px", border: "2px solid white", background: "#0f766e", color: "white", font: "700 11px sans-serif", boxShadow: "0 2px 7px rgb(15 23 42 / 35%)" });
+        const marker = new maplibregl.Marker({ element }).setLngLat(position).setPopup(new maplibregl.Popup({ offset: 18 }).setText(`Night ${stop.nightIndex} · ${stop.label}${stop.admin1Code ? `, ${stop.admin1Code}` : ""} area`)).addTo(mapInstance);
+        overnightMarkers.current.set(stop.nightIndex, marker);
+      }
+    }
+  }, [overnightStops]);
 
   useEffect(() => {
     const emphasizedId = hoveredPoiId ?? activePoiId;

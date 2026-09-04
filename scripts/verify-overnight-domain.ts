@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { OVERNIGHT_DATABASE_SHORTLIST_LIMIT, OVERNIGHT_RESULT_LIMIT, overnightTargets, scoreOvernightCandidate, settlementFeatureEligible, targetWindow } from "../src/lib/overnights/planning.ts";
+import { OVERNIGHT_DATABASE_SHORTLIST_LIMIT, OVERNIGHT_RESULT_LIMIT, overnightTargets, preserveUserOvernightSelections, scoreOvernightCandidate, settlementFeatureEligible, targetWindow } from "../src/lib/overnights/planning.ts";
 
 assert.deepEqual(overnightTargets(16_000, 4), [4_000, 8_000, 12_000]);
 assert.equal(overnightTargets(16_000, 4).length, 3);
@@ -16,4 +16,6 @@ const distantCity = scoreOvernightCandidate({ targetTimeDeviationMinutes: 110, d
 assert.ok(first.score > distantCity.score, "Population must not dominate timing and detour.");
 assert.equal(OVERNIGHT_DATABASE_SHORTLIST_LIMIT, 20);
 assert.equal(OVERNIGHT_RESULT_LIMIT, 5);
+assert.equal(preserveUserOvernightSelections(4, 4), true);
+assert.equal(preserveUserOvernightSelections(4, 5), false);
 console.log("Overnight domain checks passed.");

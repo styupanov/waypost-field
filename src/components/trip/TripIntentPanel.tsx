@@ -63,6 +63,8 @@ type TripIntentPanelProps = {
   ownedTripId: string | null;
   ownershipStatus: "unsaved" | "saving" | "saved" | "error";
   onSave: () => void;
+  onLoadOvernightAlternatives: (nightIndex: number) => Promise<void>;
+  onChangeOvernight: (nightIndex: number, geonameId: number) => Promise<void>;
 };
 
 class TripBuildError extends Error {
@@ -153,6 +155,8 @@ export default function TripIntentPanel({
   ownedTripId,
   ownershipStatus,
   onSave,
+  onLoadOvernightAlternatives,
+  onChangeOvernight,
 }: TripIntentPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [isEditingTrip, setIsEditingTrip] = useState(false);
@@ -226,6 +230,8 @@ export default function TripIntentPanel({
           preferences,
           ownedTripId,
           hardUserAttractions: visibleDraft?.stops.filter((item) => item.source === "user_attraction") ?? [],
+          existingUserOvernights: visibleDraft?.stops.filter((item) => "type" in item && item.type === "overnight" && item.source === "user") ?? [],
+          previousSelectedTripDays: visibleDraft?.multiDay.selectedDays ?? null,
         }),
       });
 
@@ -411,6 +417,8 @@ export default function TripIntentPanel({
           onEditTrip={() => setIsEditingTrip(true)}
           ownershipStatus={ownershipStatus}
           onSave={onSave}
+          onLoadOvernightAlternatives={onLoadOvernightAlternatives}
+          onChangeOvernight={onChangeOvernight}
         />
       ) : null}
       {visibleDraft ? (

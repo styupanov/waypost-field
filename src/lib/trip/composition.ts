@@ -7,12 +7,15 @@ import type {
   DraftEndpoint,
   DraftStop,
   DraftUserAttractionStop,
+  DraftOvernightStop,
   TripAlternative,
   TripDraft,
 } from "@/types/trip";
 import type { TripPreferences } from "@/types/preferences";
 import type { RouteFeature, RoutePoint, RouteResponse } from "@/types/route";
 import { calculateTripDayRecommendation } from "@/lib/trip/multi-day";
+import { integrateDefaultOvernights } from "@/lib/overnights/integration";
+import { preserveUserOvernightSelections } from "@/lib/overnights/planning";
 
 export const COMPOSITION_CORRIDOR_METERS = 25_000;
 export const DRIVING_DETOUR_BUDGET_RATIO = 0.15;
@@ -27,6 +30,8 @@ type DraftCompositionRequest = {
   destination: DraftEndpoint;
   preferences: TripPreferences;
   hardUserAttractions?: DraftUserAttractionStop[];
+  existingUserOvernights?: DraftOvernightStop[];
+  previousSelectedTripDays?: number | null;
 };
 
 type PositionedOpportunity = PersonalizedAttractionOpportunity & {
@@ -357,7 +362,7 @@ export async function composeTripDraft(
     .slice(0, TRIP_ALTERNATIVE_LIMIT)
     .map(toAlternative);
 
-  return {
+  const draft: TripDraft = {
     origin: request.origin,
     stop: request.stop,
     destination: request.destination,
@@ -370,6 +375,7 @@ export async function composeTripDraft(
       selectedTripDays: calculateTripDayRecommendation(baseline.summary.durationSeconds, request.preferences).selectedDays,
     },
     multiDay: calculateTripDayRecommendation(baseline.summary.durationSeconds, request.preferences),
+    overnightAlternatives: [],
     alternatives,
     lastEdit: null,
     composition: {
@@ -392,4 +398,6 @@ export async function composeTripDraft(
       suggestedVisitDuration: suggestedVisitDuration(finalStops),
     },
   };
+  const preserveUserChoices = preserveUserOvernightSelections(request.previousSelectedTripDays, draft.multiDay.selectedDays);
+  return integrateDefaultOvernights(draft, request.existingUserOvernights ?? [], preserveUserChoices);
 }

@@ -4,7 +4,7 @@ import { DatabaseConfigurationError } from "@/lib/db/postgres";
 import { RoutingServiceError } from "@/lib/routing/valhalla";
 import { composeTripDraft } from "@/lib/trip/composition";
 import { parseTripPreferences } from "@/lib/trip/preferences-validation";
-import type { DraftEndpoint, DraftUserAttractionStop } from "@/types/trip";
+import type { DraftEndpoint, DraftOvernightStop, DraftUserAttractionStop } from "@/types/trip";
 import { authenticatedWaypostUserId } from "@/lib/auth/session";
 import { assertTripOwnership, saveOwnedCurrentDraftVersion } from "@/lib/trips/repository";
 import { TripPersistenceError } from "@/lib/trips/repository";
@@ -50,6 +50,10 @@ export async function POST(request: Request) {
   const hardUserAttractions = Array.isArray(body.hardUserAttractions)
     ? body.hardUserAttractions.filter((stop): stop is DraftUserAttractionStop => isRecord(stop) && stop.source === "user_attraction")
     : [];
+  const existingUserOvernights = Array.isArray(body.existingUserOvernights)
+    ? body.existingUserOvernights.filter((item): item is DraftOvernightStop => isRecord(item) && item.type === "overnight" && item.source === "user")
+    : [];
+  const previousSelectedTripDays = typeof body.previousSelectedTripDays === "number" ? body.previousSelectedTripDays : null;
   if (!origin || (body.stop !== null && body.stop !== undefined && !stop) || !destination || !preferences) {
     return errorResponse("INVALID_DRAFT_REQUEST", "Valid trip endpoints and preferences are required.", 400);
   }
@@ -61,7 +65,7 @@ export async function POST(request: Request) {
       if (!userId) return errorResponse("UNAUTHORIZED", "Sign in is required.", 401);
       await assertTripOwnership(userId, ownedTripId);
     }
-    const draft = await composeTripDraft({ origin, stop, destination, preferences, hardUserAttractions });
+    const draft = await composeTripDraft({ origin, stop, destination, preferences, hardUserAttractions, existingUserOvernights, previousSelectedTripDays });
     if (ownedTripId && userId) await saveOwnedCurrentDraftVersion(userId, ownedTripId, draft);
     return NextResponse.json(draft);
   } catch (reason) {

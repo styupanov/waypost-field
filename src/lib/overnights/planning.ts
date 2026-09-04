@@ -30,6 +30,7 @@ export function timedRouteWindow(route: TimedRouteResponse, targetSeconds: numbe
   return { window, coordinates, target: { lon: target[0], lat: target[1] } as RoutePoint };
 }
 export function settlementFeatureEligible(featureCode: string) { return (ELIGIBLE_SETTLEMENT_FEATURE_CODES as readonly string[]).includes(featureCode); }
+export function preserveUserOvernightSelections(previousSelectedDays: number | null | undefined, nextSelectedDays: number) { return previousSelectedDays === nextSelectedDays; }
 export function scoreOvernightCandidate(input: { targetTimeDeviationMinutes: number; detourDurationSeconds: number; population: number; featureCode: string }) {
   const timing = Math.max(0,45*(1-input.targetTimeDeviationMinutes/120));
   const detour = Math.max(0,35*(1-input.detourDurationSeconds/MAX_OVERNIGHT_DETOUR_SECONDS));

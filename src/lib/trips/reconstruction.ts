@@ -9,11 +9,15 @@ import {
   targetPoiCount,
 } from "@/lib/trip/composition";
 import { findAttractionOpportunities } from "@/lib/attractions/opportunities";
-import type { TripAlternative, TripDraft, DraftStop } from "@/types/trip";
+import { isAttractionStop, isOvernightStop, type DraftStop, type TripAlternative, type TripDraft, type ItineraryStop } from "@/types/trip";
 import type { PersistedTrip, PersistedTripStop } from "@/types/trip-persistence";
 import { calculateTripDayRecommendation, normalizePlanningPreferences } from "@/lib/trip/multi-day";
 
-function reconstructedStop(stop: PersistedTripStop): DraftStop {
+function reconstructedStop(stop: PersistedTripStop): ItineraryStop {
+  if (stop.stopType === "overnight") {
+    if (!stop.overnightMetadata || stop.settlementGeonameId === null || stop.nightIndex === null || !stop.featureCodeSnapshot) throw new Error("Persisted overnight snapshot is incomplete.");
+    return { ...stop.overnightMetadata, type: "overnight", source: stop.source, nightIndex: stop.nightIndex, geonameId: stop.settlementGeonameId, label: stop.nameSnapshot ?? stop.label, admin1Code: stop.admin1Snapshot, featureCode: stop.featureCodeSnapshot, population: stop.populationSnapshot ?? 0, coordinates: stop.coordinates };
+  }
   if (stop.stopType === "waypoint") {
     return { source: "user", label: stop.label, coordinates: stop.coordinates };
   }
@@ -24,8 +28,7 @@ function reconstructedStop(stop: PersistedTripStop): DraftStop {
   if (!snapshot || !stop.categorySnapshot) {
     throw new Error("Persisted attraction snapshot is incomplete.");
   }
-  return {
-    source: stop.source === "waypost" ? "waypost" : "user_attraction",
+  const shared = {
     attractionId: stop.attractionId,
     label: stop.nameSnapshot ?? stop.label,
     coordinates: stop.coordinates,
@@ -40,6 +43,7 @@ function reconstructedStop(stop: PersistedTripStop): DraftStop {
     individualDetourDistanceKm: snapshot.individualDetourDistanceKm,
     individualDetourDurationSeconds: snapshot.individualDetourDurationSeconds,
   };
+  return stop.source === "waypost" ? { ...shared, source: "waypost" } : { ...shared, source: "user_attraction" };
 }
 
 export function reconstructTripDraft(trip: PersistedTrip): TripDraft {
@@ -52,7 +56,7 @@ export function reconstructTripDraft(trip: PersistedTrip): TripDraft {
   );
   if (!origin || !destination) throw new Error("Persisted trip endpoints are incomplete.");
   const stops = intermediateRows.map(reconstructedStop);
-  const userStops = stops.filter((stop) => stop.source === "user");
+  const userStops = stops.filter((stop) => !isOvernightStop(stop) && stop.source === "user");
   if (userStops.length > 1) throw new Error("Persisted trip has unsupported user stop count.");
   const baselineSeconds = version.baselineSummary.durationSeconds;
   const preferences = normalizePlanningPreferences(version.preferences);
@@ -70,10 +74,11 @@ export function reconstructTripDraft(trip: PersistedTrip): TripDraft {
     preferences: { ...preferences, selectedTripDays: multiDay.selectedDays },
     multiDay,
     alternatives: [],
+    overnightAlternatives: [],
     lastEdit: null,
     composition: {
       targetPoiCount: targetPoiCount(baselineSeconds),
-      selectedPoiCount: stops.filter((stop) => stop.source !== "user").length,
+      selectedPoiCount: stops.filter(isAttractionStop).length,
       detourBudgetSeconds: Math.min(
         baselineSeconds * DRIVING_DETOUR_BUDGET_RATIO,
         MAX_DRIVING_DETOUR_SECONDS
@@ -86,7 +91,7 @@ export function reconstructTripDraft(trip: PersistedTrip): TripDraft {
       candidatesAfterDeduplication: null,
       opportunityShortlistSize: null,
       candidatePoolTruncated: null,
-      suggestedVisitDuration: suggestedVisitDuration(stops),
+      suggestedVisitDuration: suggestedVisitDuration(stops.filter((stop): stop is DraftStop => !isOvernightStop(stop))),
     },
   };
 }
@@ -99,7 +104,7 @@ export async function refreshTripAlternatives(draft: TripDraft) {
   ];
   const selectedIds = new Set(
     draft.stops
-      .filter((stop) => stop.source !== "user")
+      .filter(isAttractionStop)
       .map((stop) => stop.attractionId)
   );
   const result = await findAttractionOpportunities(

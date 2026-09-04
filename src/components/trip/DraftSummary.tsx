@@ -1,7 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import RouteStops from "@/components/trip/RouteStops";
 import TripSummary from "@/components/trip/TripSummary";
 import styles from "./TripIntentPanel.module.css";
-import type { DraftEditAction, TripDraft } from "@/types/trip";
+import { isAttractionStop, isOvernightStop, type DraftEditAction, type TripDraft } from "@/types/trip";
 
 type DraftSummaryProps = {
   draft: TripDraft;
@@ -19,6 +22,8 @@ type DraftSummaryProps = {
   onEditTrip: () => void;
   ownershipStatus: "unsaved" | "saving" | "saved" | "error";
   onSave: () => void;
+  onLoadOvernightAlternatives: (nightIndex: number) => Promise<void>;
+  onChangeOvernight: (nightIndex: number, geonameId: number) => Promise<void>;
 };
 
 function signedDuration(seconds: number) {
@@ -47,10 +52,13 @@ export default function DraftSummary({
   onEditTrip,
   ownershipStatus,
   onSave,
+  onLoadOvernightAlternatives,
+  onChangeOvernight,
 }: DraftSummaryProps) {
+  const [changingNight, setChangingNight] = useState<number | null>(null);
   const replacementTarget = draft.stops.find(
     (stop) =>
-      stop.source !== "user" && stop.attractionId === replacementTargetId
+      isAttractionStop(stop) && stop.attractionId === replacementTargetId
   );
 
   return (
@@ -95,6 +103,18 @@ export default function DraftSummary({
         onRemove={(attractionId) => onEdit({ type: "remove", attractionId })}
         onStartReplacement={onStartReplacement}
       />
+
+      {draft.multiDay.isMultiDay ? <section className={styles.overnightSection}>
+        <h3>Overnights</h3>
+        {draft.stops.filter(isOvernightStop).sort((a,b) => a.nightIndex-b.nightIndex).map((stop) => {
+          const alternatives = draft.overnightAlternatives.find((night) => night.nightIndex === stop.nightIndex)?.candidates ?? [];
+          return <div className={styles.overnightRow} key={stop.nightIndex}>
+            <div><small>Night {stop.nightIndex}</small><strong>{stop.label}{stop.admin1Code ? `, ${stop.admin1Code}` : ""} area</strong></div>
+            <button type="button" disabled={isEditing} onClick={async () => { if (changingNight === stop.nightIndex) { setChangingNight(null); return; } await onLoadOvernightAlternatives(stop.nightIndex); setChangingNight(stop.nightIndex); }}>Change</button>
+            {changingNight === stop.nightIndex ? <ul>{alternatives.filter((candidate) => candidate.geonameId !== stop.geonameId).map((candidate) => <li key={candidate.geonameId}><div><strong>{candidate.name}{candidate.admin1Code ? `, ${candidate.admin1Code}` : ""} area</strong><small>≈ {Math.round(candidate.targetTimeDeviationMinutes)} min from target · +{Math.round(candidate.detourDurationSeconds/60)} min driving</small></div><button type="button" disabled={isEditing} onClick={async () => { await onChangeOvernight(stop.nightIndex, candidate.geonameId); setChangingNight(null); }}>Choose</button></li>)}</ul> : null}
+          </div>;
+        })}
+      </section> : null}
 
       {draft.summary.hasToll || draft.summary.hasFerry ? (
         <ul className={styles.routeIndicators} aria-label="Route indicators">

@@ -5,7 +5,7 @@ import type { Coordinates } from "@/types/trip";
 
 export type PersistedTripStatus = "draft";
 export type PersistedTripVersionState = "draft" | "finalized";
-export type PersistedStopType = "origin" | "destination" | "waypoint" | "attraction";
+export type PersistedStopType = "origin" | "destination" | "waypoint" | "attraction" | "overnight";
 export type PersistedStopSource = "user" | "waypost";
 
 export type AttractionSnapshot = {
@@ -26,11 +26,17 @@ export type PersistedTripStop = {
   stopType: PersistedStopType;
   source: PersistedStopSource;
   attractionId: number | null;
+  settlementGeonameId: number | null;
+  nightIndex: number | null;
   label: string;
   coordinates: Coordinates;
   nameSnapshot: string | null;
   categorySnapshot: string | null;
   metadataSnapshot: AttractionSnapshot | null;
+  admin1Snapshot: string | null;
+  featureCodeSnapshot: string | null;
+  populationSnapshot: number | null;
+  overnightMetadata: import("@/types/trip").DraftOvernightStop | null;
 };
 
 export type PersistedTripVersion = {

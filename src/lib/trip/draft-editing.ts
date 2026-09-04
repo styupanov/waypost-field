@@ -9,9 +9,11 @@ import type {
   DraftAttractionStop,
   DraftEditAction,
   DraftStop,
+  ItineraryStop,
   TripAlternative,
   TripDraft,
 } from "@/types/trip";
+import { isAttractionStop, isOvernightStop } from "@/types/trip";
 import type { RoutePoint } from "@/types/route";
 
 export class DraftEditError extends Error {
@@ -72,7 +74,7 @@ function findAlternative(draft: TripDraft, attractionId: number) {
 
 function editStops(draft: TripDraft, action: DraftEditAction) {
   const attractionStops = draft.stops.filter(
-    (stop): stop is DraftAttractionStop => stop.source !== "user"
+    isAttractionStop
   );
   const selectedIds = new Set(attractionStops.map((stop) => stop.attractionId));
   let stops = [...draft.stops];
@@ -96,7 +98,7 @@ function editStops(draft: TripDraft, action: DraftEditAction) {
     }
     stops = stops.filter(
       (stop) =>
-        stop.source === "user" || stop.attractionId !== action.attractionId
+        !isAttractionStop(stop) || stop.attractionId !== action.attractionId
     );
     alternatives = [alternativeFromStop(removed), ...alternatives];
 
@@ -117,7 +119,7 @@ function editStops(draft: TripDraft, action: DraftEditAction) {
 
   const activeIds = new Set(
     stops
-      .filter((stop): stop is DraftAttractionStop => stop.source !== "user")
+      .filter(isAttractionStop)
       .map((stop) => stop.attractionId)
   );
   alternatives = alternatives
@@ -132,18 +134,18 @@ function editStops(draft: TripDraft, action: DraftEditAction) {
   return { stops, alternatives };
 }
 
-function orderedStops(draft: TripDraft, stops: DraftStop[]) {
+function orderedStops(draft: TripDraft, stops: ItineraryStop[]) {
   return [...stops].sort((left, right) => {
-    const progress = (stop: DraftStop) =>
-      stop.source === "user"
+    const progress = (stop: ItineraryStop) =>
+      isOvernightStop(stop) || stop.source === "user"
         ? calculateRouteProgress(draft.route, stop.coordinates)
         : stop.routeProgress;
     const progressDifference = progress(left) - progress(right);
     if (progressDifference !== 0) return progressDifference;
-    if (left.source === "user" && right.source !== "user") return -1;
-    if (right.source === "user" && left.source !== "user") return 1;
-    const leftId = left.source === "user" ? -1 : left.attractionId;
-    const rightId = right.source === "user" ? -1 : right.attractionId;
+    if (!isAttractionStop(left) && isAttractionStop(right)) return -1;
+    if (!isAttractionStop(right) && isAttractionStop(left)) return 1;
+    const leftId = isAttractionStop(left) ? left.attractionId : -1;
+    const rightId = isAttractionStop(right) ? right.attractionId : -1;
     return leftId - rightId;
   });
 }
@@ -171,10 +173,10 @@ export async function editTripDraft(
     alternatives: edited.alternatives,
     composition: {
       ...draft.composition,
-      selectedPoiCount: stops.filter((stop) => stop.source !== "user").length,
+      selectedPoiCount: stops.filter(isAttractionStop).length,
       actualDetourSeconds: Math.max(0, rawBaselineDetour),
       actualDetourWasClamped: rawBaselineDetour < 0,
-      suggestedVisitDuration: suggestedVisitDuration(stops),
+      suggestedVisitDuration: suggestedVisitDuration(stops.filter((stop): stop is DraftStop => !isOvernightStop(stop))),
     },
     lastEdit: {
       action: action.type,

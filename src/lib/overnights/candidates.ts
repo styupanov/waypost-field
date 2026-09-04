@@ -2,7 +2,7 @@ import "server-only";
 import { getPostgresPool } from "@/lib/db/postgres";
 import { calculateTimedRoute } from "@/lib/routing/valhalla";
 import type { RoutePoint } from "@/types/route";
-import type { TripDraft } from "@/types/trip";
+import { isAttractionStop, isOvernightStop, type TripDraft } from "@/types/trip";
 import type { OvernightAreaCandidate, OvernightCandidateResponse, OvernightNightCandidates } from "@/types/overnights";
 import { ELIGIBLE_SETTLEMENT_FEATURE_CODES, MAX_OVERNIGHT_DETOUR_SECONDS, OVERNIGHT_DATABASE_SHORTLIST_LIMIT, OVERNIGHT_RESULT_LIMIT, OVERNIGHT_SPATIAL_CORRIDOR_METERS, OVERNIGHT_VALHALLA_CONCURRENCY, OVERNIGHT_VALIDATION_LIMIT, overnightTargets, scoreOvernightCandidate, timedRouteWindow } from "@/lib/overnights/planning";
 
@@ -40,10 +40,10 @@ async function settlementsNearWindow(coordinates: [number, number][], target: Ro
 }
 
 function structuralLocations(draft: TripDraft) {
-  return [draft.origin.coordinates, ...draft.stops.filter((stop) => stop.source === "user" || stop.source === "user_attraction").map((stop) => stop.coordinates), draft.destination.coordinates];
+  return [draft.origin.coordinates, ...draft.stops.filter((stop) => (!isOvernightStop(stop) && (stop.source === "user" || (isAttractionStop(stop) && stop.source === "user_attraction"))) || (isOvernightStop(stop) && stop.source === "user")).map((stop) => stop.coordinates), draft.destination.coordinates];
 }
 
-export async function findOvernightCandidates(draft: TripDraft): Promise<OvernightCandidateResponse> {
+export async function findOvernightCandidates(draft: TripDraft, requestedNightIndex?: number): Promise<OvernightCandidateResponse> {
   const started = performance.now();
   if (!draft.multiDay.isMultiDay || draft.multiDay.selectedDays <= 1) return { nights: [], diagnostics: { structuralRouteDurationSeconds: 0, structuralRouteDistanceKm: 0, valhallaCallCount: 0, totalExecutionMilliseconds: performance.now() - started } };
   const locations = structuralLocations(draft);
@@ -51,6 +51,7 @@ export async function findOvernightCandidates(draft: TripDraft): Promise<Overnig
   let valhallaCallCount = 1;
   const nights: OvernightNightCandidates[] = [];
   for (const [index, targetSeconds] of overnightTargets(structural.summary.durationSeconds, draft.multiDay.selectedDays).entries()) {
+    if (requestedNightIndex !== undefined && requestedNightIndex !== index + 1) continue;
     const timedWindow = timedRouteWindow(structural, targetSeconds);
     const rows = await settlementsNearWindow(timedWindow.coordinates, timedWindow.target);
     const validationRows = rows.slice(0, OVERNIGHT_VALIDATION_LIMIT);

@@ -5,7 +5,7 @@ import {
   WAYPOST_PLANNER_VERSION,
   WAYPOST_ROUTING_ENGINE,
 } from "../trip/planner-version.ts";
-import type { TripDraft, DraftStop } from "@/types/trip";
+import { isOvernightStop, type TripDraft, type ItineraryStop } from "../../types/trip.ts";
 import type {
   AttractionSnapshot,
   PersistedStopSource,
@@ -90,6 +90,12 @@ type StopRow = {
   name_snapshot: string | null;
   category_snapshot: string | null;
   metadata_snapshot: AttractionSnapshot | null;
+  settlement_geoname_id: string | number | null;
+  night_index: number | null;
+  admin1_snapshot: string | null;
+  feature_code_snapshot: string | null;
+  population_snapshot: string | number | null;
+  overnight_metadata: import("@/types/trip").DraftOvernightStop | null;
 };
 
 function validCoordinate(lat: number, lon: number) {
@@ -112,7 +118,8 @@ function validateDraft(draft: TripDraft) {
     !validCoordinate(draft.destination.coordinates.lat, draft.destination.coordinates.lon) ||
     draft.stops.some((stop) =>
       !validCoordinate(stop.coordinates.lat, stop.coordinates.lon) ||
-      (stop.source !== "user" && (!Number.isSafeInteger(stop.attractionId) || stop.attractionId <= 0))
+      (!isOvernightStop(stop) && stop.source !== "user" && (!Number.isSafeInteger(stop.attractionId) || stop.attractionId <= 0)) ||
+      (isOvernightStop(stop) && (!Number.isSafeInteger(stop.nightIndex) || stop.nightIndex <= 0 || !Number.isSafeInteger(stop.geonameId)))
     ) ||
     [
       draft.summary.distanceKm,
@@ -130,14 +137,8 @@ function routeGeometryJson(draft: TripDraft) {
   return JSON.stringify(draft.route.geometry);
 }
 
-function stopPersistence(stop: DraftStop): {
-  stopType: PersistedStopType;
-  source: PersistedStopSource;
-  attractionId: number | null;
-  nameSnapshot: string | null;
-  categorySnapshot: string | null;
-  metadataSnapshot: AttractionSnapshot | null;
-} {
+function stopPersistence(stop: ItineraryStop) {
+  if (isOvernightStop(stop)) return { stopType: "overnight" as const, source: stop.source, attractionId: null, settlementGeonameId: stop.geonameId, nightIndex: stop.nightIndex, nameSnapshot: stop.label, categorySnapshot: null, metadataSnapshot: null, admin1Snapshot: stop.admin1Code, featureCodeSnapshot: stop.featureCode, populationSnapshot: stop.population, overnightMetadata: stop };
   if (stop.source === "user") {
     return {
       stopType: "waypoint",
@@ -146,6 +147,7 @@ function stopPersistence(stop: DraftStop): {
       nameSnapshot: null,
       categorySnapshot: null,
       metadataSnapshot: null,
+      settlementGeonameId: null, nightIndex: null, admin1Snapshot: null, featureCodeSnapshot: null, populationSnapshot: null, overnightMetadata: null,
     };
   }
   return {
@@ -165,6 +167,7 @@ function stopPersistence(stop: DraftStop): {
       individualDetourDistanceKm: stop.individualDetourDistanceKm,
       individualDetourDurationSeconds: stop.individualDetourDurationSeconds,
     },
+    settlementGeonameId: null, nightIndex: null, admin1Snapshot: null, featureCodeSnapshot: null, populationSnapshot: null, overnightMetadata: null,
   };
 }
 
@@ -180,29 +183,36 @@ async function insertStop(
   lon: number,
   nameSnapshot: string | null,
   categorySnapshot: string | null,
-  metadataSnapshot: AttractionSnapshot | null
+  metadataSnapshot: AttractionSnapshot | null,
+  settlementGeonameId: number | null,
+  nightIndex: number | null,
+  admin1Snapshot: string | null,
+  featureCodeSnapshot: string | null,
+  populationSnapshot: number | null,
+  overnightMetadata: import("@/types/trip").DraftOvernightStop | null
 ) {
   await client.query(
     `INSERT INTO public.trip_stops (
       trip_version_id, position, stop_type, source, attraction_id, label, geom,
-      name_snapshot, category_snapshot, metadata_snapshot
+      name_snapshot, category_snapshot, metadata_snapshot, settlement_geoname_id,
+      night_index, admin1_snapshot, feature_code_snapshot, population_snapshot, overnight_metadata
     ) VALUES (
       $1, $2, $3, $4, $5, $6,
-      ST_SetSRID(ST_MakePoint($7, $8), 4326), $9, $10, $11::jsonb
+      ST_SetSRID(ST_MakePoint($7, $8), 4326), $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17::jsonb
     )`,
-    [tripVersionId, position, stopType, source, attractionId, label, lon, lat, nameSnapshot, categorySnapshot, metadataSnapshot ? JSON.stringify(metadataSnapshot) : null]
+    [tripVersionId, position, stopType, source, attractionId, label, lon, lat, nameSnapshot, categorySnapshot, metadataSnapshot ? JSON.stringify(metadataSnapshot) : null, settlementGeonameId, nightIndex, admin1Snapshot, featureCodeSnapshot, populationSnapshot, overnightMetadata ? JSON.stringify(overnightMetadata) : null]
   );
 }
 
 async function replaceStops(client: PoolClient, tripVersionId: string, draft: TripDraft) {
   await client.query("DELETE FROM public.trip_stops WHERE trip_version_id = $1", [tripVersionId]);
   const allStops = [
-    { label: draft.origin.label, coordinates: draft.origin.coordinates, stopType: "origin" as const, source: "user" as const, attractionId: null, nameSnapshot: null, categorySnapshot: null, metadataSnapshot: null },
+    { label: draft.origin.label, coordinates: draft.origin.coordinates, stopType: "origin" as const, source: "user" as const, attractionId: null, nameSnapshot: null, categorySnapshot: null, metadataSnapshot: null, settlementGeonameId: null, nightIndex: null, admin1Snapshot: null, featureCodeSnapshot: null, populationSnapshot: null, overnightMetadata: null },
     ...draft.stops.map((stop) => ({ label: stop.label, coordinates: stop.coordinates, ...stopPersistence(stop) })),
-    { label: draft.destination.label, coordinates: draft.destination.coordinates, stopType: "destination" as const, source: "user" as const, attractionId: null, nameSnapshot: null, categorySnapshot: null, metadataSnapshot: null },
+    { label: draft.destination.label, coordinates: draft.destination.coordinates, stopType: "destination" as const, source: "user" as const, attractionId: null, nameSnapshot: null, categorySnapshot: null, metadataSnapshot: null, settlementGeonameId: null, nightIndex: null, admin1Snapshot: null, featureCodeSnapshot: null, populationSnapshot: null, overnightMetadata: null },
   ];
   for (const [position, stop] of allStops.entries()) {
-    await insertStop(client, tripVersionId, position, stop.stopType, stop.source, stop.attractionId, stop.label, stop.coordinates.lat, stop.coordinates.lon, stop.nameSnapshot, stop.categorySnapshot, stop.metadataSnapshot);
+    await insertStop(client, tripVersionId, position, stop.stopType as PersistedStopType, stop.source as PersistedStopSource, stop.attractionId, stop.label, stop.coordinates.lat, stop.coordinates.lon, stop.nameSnapshot, stop.categorySnapshot, stop.metadataSnapshot, stop.settlementGeonameId, stop.nightIndex, stop.admin1Snapshot, stop.featureCodeSnapshot, stop.populationSnapshot, stop.overnightMetadata);
   }
 }
 
@@ -289,7 +299,8 @@ async function loadVersion(client: PoolClient, versionId: string): Promise<Persi
   const stopsResult = await client.query<StopRow>(
     `SELECT id, position, stop_type, source, attraction_id, label,
       ST_X(geom) AS lon, ST_Y(geom) AS lat,
-      name_snapshot, category_snapshot, metadata_snapshot
+      name_snapshot, category_snapshot, metadata_snapshot, settlement_geoname_id,
+      night_index, admin1_snapshot, feature_code_snapshot, population_snapshot, overnight_metadata
      FROM public.trip_stops WHERE trip_version_id = $1 ORDER BY position`,
     [versionId]
   );
@@ -305,6 +316,9 @@ async function loadVersion(client: PoolClient, versionId: string): Promise<Persi
       attractionId: stop.attraction_id === null ? null : Number(stop.attraction_id), label: stop.label,
       coordinates: { lat: stop.lat, lon: stop.lon }, nameSnapshot: stop.name_snapshot,
       categorySnapshot: stop.category_snapshot, metadataSnapshot: stop.metadata_snapshot,
+      settlementGeonameId: stop.settlement_geoname_id === null ? null : Number(stop.settlement_geoname_id), nightIndex: stop.night_index,
+      admin1Snapshot: stop.admin1_snapshot, featureCodeSnapshot: stop.feature_code_snapshot,
+      populationSnapshot: stop.population_snapshot === null ? null : Number(stop.population_snapshot), overnightMetadata: stop.overnight_metadata,
     })),
     createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(),
     finalizedAt: row.finalized_at?.toISOString() ?? null,

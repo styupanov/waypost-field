@@ -16,6 +16,7 @@ import type {
   TripEndpoint,
   TripField,
 } from "@/types/trip";
+import { isAttractionStop, isOvernightStop } from "@/types/trip";
 import {
   DEFAULT_TRIP_PREFERENCES,
   type DetourTolerance,
@@ -373,6 +374,30 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
     }
   }
 
+  async function loadOvernightAlternatives(nightIndex: number) {
+    if (!visibleDraft) return;
+    const existing = visibleDraft.overnightAlternatives.find((night) => night.nightIndex === nightIndex);
+    if (existing?.candidates.length) return;
+    setEditError(null);
+    try {
+      const response = await fetch("/api/overnights/candidates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft: visibleDraft, nightIndex }) });
+      if (!response.ok) throw new Error("Candidates unavailable");
+      const data = await response.json() as { nights: TripDraft["overnightAlternatives"] };
+      setPlannerState((current) => current.status === "draft_ready" ? { ...current, draft: { ...current.draft, overnightAlternatives: [...current.draft.overnightAlternatives.filter((night) => night.nightIndex !== nightIndex), ...data.nights] } } : current);
+    } catch (error) { console.error("Failed to load overnight alternatives:", error); setEditError("Overnight alternatives could not be loaded."); }
+  }
+
+  async function changeOvernight(nightIndex: number, geonameId: number) {
+    if (!visibleDraft || plannerState.status === "generating_draft" || editRequestInFlight.current) return;
+    editRequestInFlight.current = true; setEditError(null); if (ownedTripId) setOwnershipStatus("saving"); startDraftGeneration();
+    try {
+      const response = await fetch("/api/draft/overnight", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft: visibleDraft, nightIndex, geonameId, ownedTripId }) });
+      if (!response.ok) throw new Error("Overnight change failed");
+      finishDraftEdit(await response.json() as TripDraft); if (ownedTripId) setOwnershipStatus("saved");
+    } catch (error) { failDraftGeneration(); console.error("Failed to change overnight:", error); setEditError("The overnight area is unchanged because rerouting failed."); }
+    finally { editRequestInFlight.current = false; }
+  }
+
   async function persistCurrentDraft() {
     if (!visibleDraft || (plannerState.status === "draft_ready" && plannerState.isDirty)) return;
     setOwnershipStatus("saving");
@@ -409,8 +434,9 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       <MapCanvas
         route={visibleDraft?.route ?? null}
         attractionStops={
-          visibleDraft?.stops.filter((item) => item.source !== "user") ?? []
+          visibleDraft?.stops.filter(isAttractionStop) ?? []
         }
+        overnightStops={visibleDraft?.stops.filter(isOvernightStop) ?? []}
         alternatives={visibleDraft?.alternatives ?? []}
         originCoordinates={origin.coordinates}
         stopCoordinates={stop?.coordinates ?? null}
@@ -461,6 +487,8 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
         ownedTripId={ownedTripId}
         ownershipStatus={ownershipStatus}
         onSave={requestSave}
+        onLoadOvernightAlternatives={loadOvernightAlternatives}
+        onChangeOvernight={changeOvernight}
       />
       {visibleDraft && visibleDraft.alternatives.length > 0 ? (
         <AlongTheWay
@@ -470,7 +498,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
           replacementTargetName={
             visibleDraft.stops.find(
               (stop) =>
-                stop.source !== "user" &&
+                isAttractionStop(stop) &&
                 stop.attractionId === replacementTargetId
             )?.label ?? null
           }

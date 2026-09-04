@@ -292,6 +292,7 @@
   transform: rotate(45deg) scale(0.82);
 }
 .userStopNode { background: #475569; }
+.overnightNode { border-radius: 5px; background: #0f766e; }
 
 .endpointStop strong,
 .userStop strong {
@@ -787,6 +788,14 @@
   font-size: 12px;
   line-height: 1.4;
 }
+.overnightSection { display: grid; gap: 8px; padding-top: 13px; border-top: 1px solid #e2e8f0; }
+.overnightSection h3 { margin: 0; color: #334155; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+.overnightRow { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px; padding: 8px; border-radius: 7px; background: #f0fdfa; }
+.overnightRow strong, .overnightRow small { display: block; }
+.overnightRow small { color: #64748b; font-size: 10px; }
+.panel .overnightRow > button, .panel .overnightRow li button { width: fit-content; padding: 4px 7px; font-size: 10px; }
+.overnightRow ul { grid-column: 1 / -1; display: grid; gap: 6px; margin: 5px 0 0; padding: 7px 0 0; border-top: 1px solid #ccfbf1; list-style: none; }
+.overnightRow li { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px; align-items: center; }
 .multiDay { display: grid; gap: 9px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
 .multiDay h4, .multiDay p { margin: 0; }
 .multiDay h4 { color: #334155; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }

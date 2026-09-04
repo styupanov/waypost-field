@@ -2,6 +2,10 @@
 
 import { FormEvent, useState } from "react";
 import styles from "./TripIntentPanel.module.css";
+import type {
+  GeocodingResponse,
+  GeocodingResult,
+} from "@/types/geocoding";
 import type { RouteFeature } from "@/types/route";
 
 type TripIntentPanelProps = {
@@ -12,41 +16,74 @@ type RouteResponse = {
   route: RouteFeature;
 };
 
-const initialCoordinates = {
-  originLat: "35.2271",
-  originLon: "-80.8431",
-  destinationLat: "39.7392",
-  destinationLon: "-104.9903",
-};
+type TripField = "origin" | "destination";
+
+class TripBuildError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TripBuildError";
+  }
+}
+
+async function geocodePlace(
+  query: string,
+  field: TripField
+): Promise<GeocodingResult> {
+  const response = await fetch("/api/geocode", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query }),
+  });
+
+  if (!response.ok) {
+    throw new TripBuildError(
+      `Unable to geocode the ${field}. Please try again.`
+    );
+  }
+
+  const data = (await response.json()) as GeocodingResponse;
+  const result = data.results[0];
+
+  if (!result) {
+    throw new TripBuildError(
+      `No location was found for the ${field}. Check the place and try again.`
+    );
+  }
+
+  return result;
+}
 
 export default function TripIntentPanel({
   onRouteBuilt,
 }: TripIntentPanelProps) {
-  const [coordinates, setCoordinates] = useState(initialCoordinates);
+  const [origin, setOrigin] = useState("Charlotte, NC");
+  const [destination, setDestination] = useState("Denver, CO");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  function updateCoordinate(name: keyof typeof coordinates, value: string) {
-    setCoordinates((current) => ({ ...current, [name]: value }));
-  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
 
-    const values = Object.values(coordinates).map((value) =>
-      value.trim() === "" ? Number.NaN : Number(value)
-    );
+    const trimmedOrigin = origin.trim();
+    const trimmedDestination = destination.trim();
 
-    if (!values.every(Number.isFinite)) {
-      setError("Enter a valid number for all four coordinates.");
+    if (!trimmedOrigin || !trimmedDestination) {
+      setError("Enter both an origin and a destination.");
       return;
     }
 
-    const [originLat, originLon, destinationLat, destinationLon] = values;
     setIsLoading(true);
 
     try {
+      const originResult = await geocodePlace(trimmedOrigin, "origin");
+      const destinationResult = await geocodePlace(
+        trimmedDestination,
+        "destination"
+      );
+
       const response = await fetch("/api/route", {
         method: "POST",
         headers: {
@@ -54,21 +91,27 @@ export default function TripIntentPanel({
         },
         body: JSON.stringify({
           locations: [
-            { lat: originLat, lon: originLon },
-            { lat: destinationLat, lon: destinationLon },
+            { lat: originResult.lat, lon: originResult.lon },
+            { lat: destinationResult.lat, lon: destinationResult.lon },
           ],
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`Routing request failed with status ${response.status}.`);
+        throw new TripBuildError(
+          "The places were found, but routing failed. Please try again."
+        );
       }
 
       const data = (await response.json()) as RouteResponse;
       onRouteBuilt(data.route);
     } catch (reason) {
       console.error("Failed to build route:", reason);
-      setError("Unable to build the route. Please try again.");
+      setError(
+        reason instanceof TripBuildError
+          ? reason.message
+          : "Unable to build the route. Please try again."
+      );
     } finally {
       setIsLoading(false);
     }
@@ -78,61 +121,25 @@ export default function TripIntentPanel({
     <section className={styles.panel} aria-labelledby="trip-intent-heading">
       <h1 id="trip-intent-heading">Trip intent</h1>
       <form onSubmit={handleSubmit}>
-        <fieldset disabled={isLoading}>
-          <legend>Origin</legend>
-          <div className={styles.coordinateGrid}>
-            <label>
-              Latitude
-              <input
-                name="originLat"
-                inputMode="decimal"
-                value={coordinates.originLat}
-                onChange={(event) =>
-                  updateCoordinate("originLat", event.target.value)
-                }
-              />
-            </label>
-            <label>
-              Longitude
-              <input
-                name="originLon"
-                inputMode="decimal"
-                value={coordinates.originLon}
-                onChange={(event) =>
-                  updateCoordinate("originLon", event.target.value)
-                }
-              />
-            </label>
-          </div>
-        </fieldset>
+        <label className={styles.placeField}>
+          Origin
+          <input
+            name="origin"
+            value={origin}
+            disabled={isLoading}
+            onChange={(event) => setOrigin(event.target.value)}
+          />
+        </label>
 
-        <fieldset disabled={isLoading}>
-          <legend>Destination</legend>
-          <div className={styles.coordinateGrid}>
-            <label>
-              Latitude
-              <input
-                name="destinationLat"
-                inputMode="decimal"
-                value={coordinates.destinationLat}
-                onChange={(event) =>
-                  updateCoordinate("destinationLat", event.target.value)
-                }
-              />
-            </label>
-            <label>
-              Longitude
-              <input
-                name="destinationLon"
-                inputMode="decimal"
-                value={coordinates.destinationLon}
-                onChange={(event) =>
-                  updateCoordinate("destinationLon", event.target.value)
-                }
-              />
-            </label>
-          </div>
-        </fieldset>
+        <label className={styles.placeField}>
+          Destination
+          <input
+            name="destination"
+            value={destination}
+            disabled={isLoading}
+            onChange={(event) => setDestination(event.target.value)}
+          />
+        </label>
 
         <button type="submit" disabled={isLoading}>
           {isLoading ? "Building route…" : "Build route"}

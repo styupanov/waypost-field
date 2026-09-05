@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getSession, signOut } from "next-auth/react";
 import MapCanvas from "@/components/map/MapCanvas";
 import AlongTheWay from "@/components/trip/AlongTheWay";
@@ -26,6 +26,7 @@ import {
   type DrivingPace,
 } from "@/types/preferences";
 import { calculateTripDayRecommendation } from "@/lib/trip/multi-day";
+import type { FinalRoutePreview, FinalRoutePreviewState } from "@/types/final-route";
 
 const initialOrigin: TripEndpoint = {
   input: "Charlotte, NC",
@@ -72,6 +73,8 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
   );
   const [findingAlternatives, setFindingAlternatives] = useState(false);
   const editRequestInFlight = useRef(false);
+  const previewRequestInFlight = useRef(false);
+  const [finalPreview, setFinalPreview] = useState<FinalRoutePreviewState>({ status: "idle" });
   const [preferences, setPreferences] = useState<TripPreferences>(() => ({
     ...DEFAULT_TRIP_PREFERENCES,
     preferredCategories: [],
@@ -92,6 +95,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       setOwnedTripId(data.tripId); setOwnershipStatus("saved"); setSavedTripState("idle");
       setPlannerState({ status: "draft_ready", draft, isDirty: false }); setPreferences(draft.preferences);
       setActiveNightIndex(null); setMapFocusCoordinates(null);
+      setFinalPreview({ status: "idle" });
       setOrigin({ input: draft.origin.label, coordinates: draft.origin.coordinates, resolvedLabel: draft.origin.label, source: "text" });
       setDestination({ input: draft.destination.label, coordinates: draft.destination.coordinates, resolvedLabel: draft.destination.label, source: "text" });
       setStop(draft.stop ? { input: draft.stop.label, coordinates: draft.stop.coordinates, resolvedLabel: draft.stop.label, source: "text" } : null);
@@ -255,6 +259,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
   }
 
   function markDraftDirty() {
+    setFinalPreview({ status: "idle" });
     setPlannerState((current) =>
       current.status === "draft_ready"
         ? { ...current, isDirty: true }
@@ -264,6 +269,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
   }
 
   function startDraftGeneration() {
+    setFinalPreview({ status: "idle" });
     if (ownedTripId) setOwnershipStatus("saving");
     setPlannerState((current) => {
       if (current.status === "generating_draft") {
@@ -338,6 +344,21 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       : plannerState.status === "generating_draft"
         ? plannerState.previousDraft
         : null;
+  const displayedRoute = useMemo(() => finalPreview.status === "active" ? { type: "Feature" as const, properties: { provider: "here" }, geometry: finalPreview.result.route } : visibleDraft?.route ?? null, [finalPreview, visibleDraft]);
+
+  async function previewFinalRoute() {
+    if (!visibleDraft || plannerState.status === "generating_draft" || previewRequestInFlight.current) return;
+    previewRequestInFlight.current = true; setFinalPreview({ status: "loading" });
+    try {
+      const response = await fetch("/api/finalize/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ownedTripId ? { ownedTripId } : { draft: visibleDraft }) });
+      const data = await response.json() as FinalRoutePreview | { error?: { message?: string } };
+      if (!response.ok || !("provider" in data)) throw new Error("error" in data ? data.error?.message : undefined);
+      setFinalPreview({ status: "active", result: data });
+    } catch (reason) {
+      console.error("Final route preview failed.");
+      setFinalPreview({ status: "error", message: reason instanceof Error && reason.message && reason.message !== "Failed to fetch" ? reason.message : "HERE final route preview is unavailable. Your Draft is unchanged." });
+    } finally { previewRequestInFlight.current = false; }
+  }
 
   async function editDraft(action: DraftEditAction) {
     if (!visibleDraft || plannerState.status === "generating_draft" || editRequestInFlight.current) {
@@ -437,7 +458,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
   return (
     <>
       <MapCanvas
-        route={visibleDraft?.route ?? null}
+        route={displayedRoute}
         attractionStops={
           visibleDraft?.stops.filter(isAttractionStop) ?? []
         }
@@ -500,6 +521,9 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
         onSave={requestSave}
         onLoadOvernightAlternatives={loadOvernightAlternatives}
         onChangeOvernight={changeOvernight}
+        finalPreview={finalPreview}
+        onPreviewFinalRoute={() => void previewFinalRoute()}
+        onBackToDraft={() => setFinalPreview({ status: "idle" })}
       />
       {visibleDraft && visibleDraft.alternatives.length > 0 ? (
         <AlongTheWay

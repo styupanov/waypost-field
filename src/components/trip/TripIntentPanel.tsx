@@ -25,6 +25,7 @@ import type {
   TripPreferences,
   DrivingPace,
 } from "@/types/preferences";
+import type { FinalRoutePreviewState } from "@/types/final-route";
 
 type TripIntentPanelProps = {
   origin: TripEndpoint;
@@ -68,6 +69,9 @@ type TripIntentPanelProps = {
   onSave: () => void;
   onLoadOvernightAlternatives: (nightIndex: number) => Promise<void>;
   onChangeOvernight: (nightIndex: number, geonameId: number) => Promise<void>;
+  finalPreview: FinalRoutePreviewState;
+  onPreviewFinalRoute: () => void;
+  onBackToDraft: () => void;
 };
 
 class TripBuildError extends Error {
@@ -163,6 +167,9 @@ export default function TripIntentPanel({
   onSave,
   onLoadOvernightAlternatives,
   onChangeOvernight,
+  finalPreview,
+  onPreviewFinalRoute,
+  onBackToDraft,
 }: TripIntentPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [isEditingTrip, setIsEditingTrip] = useState(false);
@@ -428,6 +435,9 @@ export default function TripIntentPanel({
           onSave={onSave}
           onLoadOvernightAlternatives={onLoadOvernightAlternatives}
           onChangeOvernight={onChangeOvernight}
+          finalPreview={finalPreview}
+          onPreviewFinalRoute={onPreviewFinalRoute}
+          onBackToDraft={onBackToDraft}
         />
       ) : null}
       {visibleDraft ? (

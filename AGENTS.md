@@ -18,3 +18,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Generate fog coverage only after explicit confirmation that travel occurred.
 - Keep domain logic out of UI code where practical.
 - Do not redesign the architecture without justification.
+- Treat HERE route content as provider-controlled temporary content. Waypost permanently owns the trip, version, ordered itinerary, stop snapshots, preferences, day structure, and user choices; any bounded HERE provider cache belongs to a separate checkpoint.

@@ -4,6 +4,8 @@ import RouteStops from "@/components/trip/RouteStops";
 import TripSummary from "@/components/trip/TripSummary";
 import styles from "./TripIntentPanel.module.css";
 import { isAttractionStop, isOvernightStop, type Coordinates, type DraftEditAction, type TripDraft } from "@/types/trip";
+import type { FinalRoutePreviewState } from "@/types/final-route";
+import { formatApproximateDistance, formatApproximateDuration } from "@/lib/trip/formatters";
 
 type DraftSummaryProps = {
   draft: TripDraft;
@@ -26,6 +28,9 @@ type DraftSummaryProps = {
   onSave: () => void;
   onLoadOvernightAlternatives: (nightIndex: number) => Promise<void>;
   onChangeOvernight: (nightIndex: number, geonameId: number) => Promise<void>;
+  finalPreview: FinalRoutePreviewState;
+  onPreviewFinalRoute: () => void;
+  onBackToDraft: () => void;
 };
 
 function signedDuration(seconds: number) {
@@ -59,6 +64,9 @@ export default function DraftSummary({
   onSave,
   onLoadOvernightAlternatives,
   onChangeOvernight,
+  finalPreview,
+  onPreviewFinalRoute,
+  onBackToDraft,
 }: DraftSummaryProps) {
   const replacementTarget = draft.stops.find(
     (stop) =>
@@ -73,6 +81,15 @@ export default function DraftSummary({
   return (
     <div className={styles.draftWorkspace}>
       <TripSummary draft={draft} onEditTrip={onEditTrip} />
+      {finalPreview.status === "active" ? <section className={styles.finalPreview} aria-label="Final route preview">
+        <div><strong>Final route preview</strong><small>HERE · Temporary preview</small></div>
+        <dl><div><dt>Driving time</dt><dd>{formatApproximateDuration(finalPreview.result.summary.durationSeconds)}</dd></div><div><dt>Distance</dt><dd>{formatApproximateDistance(finalPreview.result.summary.distanceKm)}</dd></div></dl>
+        <button type="button" onClick={onBackToDraft}>Back to draft</button>
+      </section> : <div className={styles.previewAction}>
+        <button type="button" disabled={isDirty || isEditing || finalPreview.status === "loading"} onClick={onPreviewFinalRoute}>{finalPreview.status === "loading" ? "Preparing HERE preview…" : "Preview final route"}</button>
+        <small>Uses HERE for a temporary final-route preview. Your Draft stays unchanged.</small>
+        {finalPreview.status === "error" ? <span role="alert">{finalPreview.message}</span> : null}
+      </div>}
       <div className={styles.ownershipAction}>
         {ownershipStatus === "saved" ? <span>Saved to your map</span> : (
           <button type="button" disabled={isDirty || isEditing || ownershipStatus === "saving"} onClick={onSave}>
@@ -120,7 +137,7 @@ export default function DraftSummary({
         onChangeOvernight={onChangeOvernight}
       />
 
-      {draft.summary.hasToll || draft.summary.hasFerry ? (
+      {finalPreview.status !== "active" && (draft.summary.hasToll || draft.summary.hasFerry) ? (
         <ul className={styles.routeIndicators} aria-label="Route indicators">
           {draft.summary.hasToll ? <li>Includes tolls</li> : null}
           {draft.summary.hasFerry ? <li>Includes a ferry</li> : null}

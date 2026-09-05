@@ -18,6 +18,7 @@ import { buildFogMask, padCoverageViewport, type FogMaskFeature } from "@/lib/co
 import type { CoverageViewport } from "@/types/coverage";
 import { coverageStyleForMode } from "@/lib/coverage/coverage-style";
 import type { TraveledRouteHistoryResponse, VisitedPlacesResponse } from "@/types/personal-history";
+import type { UnexploredTerritorySelection } from "@/types/unexplored-territory";
 
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
@@ -42,6 +43,9 @@ type MapCanvasProps = {
   personalMapCameraReady: boolean;
   traveledRoutesEnabled: boolean;
   visitedPlacesEnabled: boolean;
+  unexploredSelection: UnexploredTerritorySelection | null;
+  onUnexploredMapClick: (coordinates: Coordinates, displayResolution: number, revealedCells: string[], clickedFog: boolean) => void;
+  onPersonalCoverageRendered: (displayResolution: number, cells: string[]) => void;
   onMapPointSelected: (field: TripField, coordinates: Coordinates) => void;
   onPoiHover: (attractionId: number | null) => void;
   onPoiSelect: (attractionId: number) => void;
@@ -64,6 +68,9 @@ const HISTORY_ROUTE_SOURCE_ID = "waypost-traveled-routes";
 const HISTORY_ROUTE_LAYER_ID = "waypost-traveled-routes-line";
 const VISITED_PLACES_SOURCE_ID = "waypost-visited-places";
 const VISITED_PLACES_LAYER_ID = "waypost-visited-places-circle";
+const UNEXPLORED_SELECTION_SOURCE_ID = "waypost-unexplored-selection";
+const UNEXPLORED_SELECTION_FILL_LAYER_ID = "waypost-unexplored-selection-fill";
+const UNEXPLORED_SELECTION_OUTLINE_LAYER_ID = "waypost-unexplored-selection-outline";
 
 function renderPersonalCoverage(map: maplibregl.Map, cells: string[], fog: FogMaskFeature, personalMapMode: boolean) {
   const coverageStyle = coverageStyleForMode(personalMapMode);
@@ -225,6 +232,9 @@ export default function MapCanvas({
   personalMapCameraReady,
   traveledRoutesEnabled,
   visitedPlacesEnabled,
+  unexploredSelection,
+  onUnexploredMapClick,
+  onPersonalCoverageRendered,
   onMapPointSelected,
   onPoiHover,
   onPoiSelect,
@@ -244,6 +254,7 @@ export default function MapCanvas({
   const coverageRequestSequence = useRef(0);
   const historyRouteRequestSequence = useRef(0);
   const visitedPlacesRequestSequence = useRef(0);
+  const personalCoverageSnapshot = useRef<{ displayResolution: number; cells: string[] } | null>(null);
 
   useEffect(() => {
     onPoiHoverRef.current = onPoiHover;
@@ -325,6 +336,8 @@ export default function MapCanvas({
         if (!response.ok) return;
         const coverage = await response.json() as PersonalCoverageResponse;
         if (!disposed && requestSequence === coverageRequestSequence.current) {
+          personalCoverageSnapshot.current = { displayResolution: coverage.displayResolution, cells: coverage.cells };
+          onPersonalCoverageRendered(coverage.displayResolution, coverage.cells);
           renderPersonalCoverage(mapInstance, coverage.cells, buildFogMask({ bounds, revealedCells: coverage.cells }), personalMapMode);
         }
       } catch (error) {
@@ -341,7 +354,35 @@ export default function MapCanvas({
       mapInstance.off("moveend", handleMoveEnd);
       mapInstance.off("load", handleLoad);
     };
-  }, [personalCoverageEnabled, coverageRevision, personalMapMode]);
+  }, [onPersonalCoverageRendered, personalCoverageEnabled, coverageRevision, personalMapMode]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+    if (!mapInstance) return;
+    const source = mapInstance.getSource(UNEXPLORED_SELECTION_SOURCE_ID);
+    if (!personalMapMode || !unexploredSelection) {
+      if (source) (source as maplibregl.GeoJSONSource).setData(EMPTY_COVERAGE);
+      return;
+    }
+    const feature: GeoJSON.Feature<GeoJSON.Polygon> = { type: "Feature", properties: {}, geometry: unexploredSelection.boundary };
+    if (source) (source as maplibregl.GeoJSONSource).setData(feature); else mapInstance.addSource(UNEXPLORED_SELECTION_SOURCE_ID, { type: "geojson", data: feature });
+    if (!mapInstance.getLayer(UNEXPLORED_SELECTION_FILL_LAYER_ID)) mapInstance.addLayer({ id: UNEXPLORED_SELECTION_FILL_LAYER_ID, type: "fill", source: UNEXPLORED_SELECTION_SOURCE_ID, paint: { "fill-color": "#f3c969", "fill-opacity": 0.16 } });
+    if (!mapInstance.getLayer(UNEXPLORED_SELECTION_OUTLINE_LAYER_ID)) mapInstance.addLayer({ id: UNEXPLORED_SELECTION_OUTLINE_LAYER_ID, type: "line", source: UNEXPLORED_SELECTION_SOURCE_ID, paint: { "line-color": "#f0c04f", "line-width": 2, "line-opacity": 0.9 } });
+  }, [personalMapMode, unexploredSelection]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+    if (!mapInstance || !personalMapMode) return;
+    const canvas = mapInstance.getCanvas(); canvas.style.cursor = "pointer";
+    const click = (event: maplibregl.MapMouseEvent) => {
+      const snapshot = personalCoverageSnapshot.current;
+      if (!snapshot) return;
+      const clickedFog = Boolean(mapInstance.getLayer(FOG_FILL_LAYER_ID) && mapInstance.queryRenderedFeatures(event.point, { layers: [FOG_FILL_LAYER_ID] }).length);
+      onUnexploredMapClick({ lat: event.lngLat.lat, lon: event.lngLat.lng }, snapshot.displayResolution, snapshot.cells, clickedFog);
+    };
+    mapInstance.on("click", click);
+    return () => { mapInstance.off("click", click); canvas.style.cursor = ""; };
+  }, [onUnexploredMapClick, personalMapMode]);
 
   useEffect(() => {
     const mapInstance = map.current;

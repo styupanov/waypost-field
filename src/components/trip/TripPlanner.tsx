@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import MapCanvas from "@/components/map/MapCanvas";
@@ -31,6 +31,8 @@ import { resolveDisplayedTripRoute } from "@/lib/trip/display-route";
 import { isCurrentWorkspace, resolveWorkspaceMode, showsTripWorkspace, workspaceUrl, type WorkspaceDestination } from "@/lib/trip/workspace-mode";
 import type { PersonalCoverageBoundsResponse } from "@/types/coverage";
 import { DEFAULT_PERSONAL_MAP_LAYERS, personalHistoryLayerActive } from "@/lib/personal-history/layer-state";
+import { createUnexploredTerritorySelection, selectionIsExplored } from "@/lib/coverage/unexplored-territory";
+import type { UnexploredTerritorySelection } from "@/types/unexplored-territory";
 import type { FinalRoutePreview, FinalRoutePreviewState, FinalizedTripResult, FinalizedTripWorkspace, TripFinalizationState, TripLifecycleActionState, TravelConfirmationActionState } from "@/types/final-route";
 
 const initialOrigin: TripEndpoint = {
@@ -96,12 +98,21 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
   const [personalMapLayersOpen, setPersonalMapLayersOpen] = useState(false);
   const [traveledRoutesEnabled, setTraveledRoutesEnabled] = useState<boolean>(DEFAULT_PERSONAL_MAP_LAYERS.traveledRoutes);
   const [visitedPlacesEnabled, setVisitedPlacesEnabled] = useState<boolean>(DEFAULT_PERSONAL_MAP_LAYERS.visitedPlaces);
+  const [unexploredSelection, setUnexploredSelection] = useState<UnexploredTerritorySelection | null>(null);
   const [preferences, setPreferences] = useState<TripPreferences>(() => ({
     ...DEFAULT_TRIP_PREFERENCES,
     preferredCategories: [],
     excludedCategories: [],
   }));
   const workspaceMode = resolveWorkspaceMode({ authenticated: Boolean(sessionUser), requestedTripId, requestedMode });
+  const handleUnexploredMapClick = useCallback((coordinates: Coordinates, displayResolution: number, revealedCells: string[], clickedFog: boolean) => {
+    if (!clickedFog) { setUnexploredSelection(null); return; }
+    const selection = createUnexploredTerritorySelection(coordinates.lat, coordinates.lon, displayResolution);
+    setUnexploredSelection(selectionIsExplored(selection, revealedCells) ? null : selection);
+  }, []);
+  const handlePersonalCoverageRendered = useCallback((_displayResolution: number, cells: string[]) => {
+    setUnexploredSelection((current) => current && selectionIsExplored(current, cells) ? null : current);
+  }, []);
 
   useEffect(() => {
     if (!sessionUser) return;
@@ -614,6 +625,7 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
   function performWorkspaceNavigation(target: WorkspaceDestination) {
     tripLoadSequence.current += 1;
     clearTripContext();
+    setUnexploredSelection(null);
     if (target.mode === "personal_map") {
       setPersonalMapCoverageState("loading");
       setPersonalCoverageBounds(null);
@@ -664,6 +676,9 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
         personalMapCameraReady={personalMapCoverageState === "available" || personalMapCoverageState === "empty"}
         traveledRoutesEnabled={personalHistoryLayerActive(workspaceMode, traveledRoutesEnabled)}
         visitedPlacesEnabled={personalHistoryLayerActive(workspaceMode, visitedPlacesEnabled)}
+        unexploredSelection={workspaceMode === "personal_map" ? unexploredSelection : null}
+        onUnexploredMapClick={handleUnexploredMapClick}
+        onPersonalCoverageRendered={handlePersonalCoverageRendered}
         onMapPointSelected={selectMapPoint}
         onPoiHover={setHoveredPoiId}
         onPoiSelect={selectPoi}
@@ -773,6 +788,11 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
         {personalMapLayersOpen ? <div className="personal-map-layers" aria-label="Map layers">
           <label><input type="checkbox" checked={traveledRoutesEnabled} onChange={(event) => setTraveledRoutesEnabled(event.target.checked)} /> Traveled routes</label>
           <label><input type="checkbox" checked={visitedPlacesEnabled} onChange={(event) => setVisitedPlacesEnabled(event.target.checked)} /> Visited places</label>
+        </div> : null}
+        {unexploredSelection ? <div className="unexplored-territory-context">
+          <strong>Unexplored territory</strong>
+          <small>This area isn&apos;t part of your traveled map yet.</small>
+          <button type="button" onClick={() => setUnexploredSelection(null)}>Clear</button>
         </div> : null}
       </section> : null}
       <div className="account-control">

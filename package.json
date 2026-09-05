@@ -27,6 +27,7 @@
     "test:personal-map": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-personal-map.ts",
     "test:workspace-navigation": "node --experimental-strip-types scripts/verify-workspace-navigation.ts",
     "test:personal-map-layers": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-personal-map-layers.ts",
+    "test:unexplored-territory": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-unexplored-territory.ts",
     "diagnose:fog-mask": "node --experimental-strip-types --env-file=.env.local scripts/diagnose-fog-mask.ts",
     "compare:routes": "node --experimental-strip-types --env-file=.env.local scripts/compare-route-geometries.ts",
     "calibrate:h3-route": "node --experimental-strip-types --env-file=.env.local scripts/calibrate-h3-route.ts",

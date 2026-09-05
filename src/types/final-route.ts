@@ -12,3 +12,21 @@ export type FinalRoutePreviewState =
   | { status: "loading" }
   | { status: "active"; result: FinalRoutePreview }
   | { status: "error"; message: string };
+
+export type FinalizedTripResult = {
+  tripId: string;
+  versionId: string;
+  tripStatus: "planned";
+  versionState: "finalized";
+  finalizedAt: string;
+  provider: "here";
+  finalRoute: Pick<FinalRoutePreview, "route" | "summary">;
+  cache: { fetchedAt: string; expiresAt: string };
+};
+
+export type TripFinalizationState =
+  | { status: "draft" }
+  | { status: "confirming" }
+  | { status: "finalizing" }
+  | { status: "planned"; result: FinalizedTripResult }
+  | { status: "error"; message: string };

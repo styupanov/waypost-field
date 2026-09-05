@@ -25,7 +25,7 @@ import type {
   TripPreferences,
   DrivingPace,
 } from "@/types/preferences";
-import type { FinalRoutePreviewState } from "@/types/final-route";
+import type { FinalRoutePreviewState, TripFinalizationState } from "@/types/final-route";
 
 type TripIntentPanelProps = {
   origin: TripEndpoint;
@@ -72,6 +72,10 @@ type TripIntentPanelProps = {
   finalPreview: FinalRoutePreviewState;
   onPreviewFinalRoute: () => void;
   onBackToDraft: () => void;
+  finalizationState: TripFinalizationState;
+  onRequestFinalize: () => void;
+  onConfirmFinalize: () => void;
+  onCancelFinalize: () => void;
 };
 
 class TripBuildError extends Error {
@@ -170,6 +174,10 @@ export default function TripIntentPanel({
   finalPreview,
   onPreviewFinalRoute,
   onBackToDraft,
+  finalizationState,
+  onRequestFinalize,
+  onConfirmFinalize,
+  onCancelFinalize,
 }: TripIntentPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [isEditingTrip, setIsEditingTrip] = useState(false);
@@ -276,10 +284,10 @@ export default function TripIntentPanel({
 
   return (
     <section ref={panelRef} className={styles.panel} aria-label="Trip planner">
-      {!visibleDraft || isEditingTrip ? (
+      {(!visibleDraft || isEditingTrip) && finalizationState.status !== "planned" ? (
         <h1 id="trip-intent-heading">{visibleDraft ? "Edit trip" : "Plan a trip"}</h1>
       ) : null}
-      {!visibleDraft || isEditingTrip ? <form onSubmit={handleSubmit}>
+      {(!visibleDraft || isEditingTrip) && finalizationState.status !== "planned" ? <form onSubmit={handleSubmit}>
         <div className={styles.endpointField}>
           <label className={styles.placeField}>
             Origin
@@ -438,9 +446,13 @@ export default function TripIntentPanel({
           finalPreview={finalPreview}
           onPreviewFinalRoute={onPreviewFinalRoute}
           onBackToDraft={onBackToDraft}
+          finalizationState={finalizationState}
+          onRequestFinalize={onRequestFinalize}
+          onConfirmFinalize={onConfirmFinalize}
+          onCancelFinalize={onCancelFinalize}
         />
       ) : null}
-      {visibleDraft ? (
+      {visibleDraft && finalizationState.status !== "planned" ? (
         <div className={styles.tripStyleSection}>
           <h3>Trip style</h3>
           <TripPreferencesPanel

@@ -4,8 +4,9 @@ import RouteStops from "@/components/trip/RouteStops";
 import TripSummary from "@/components/trip/TripSummary";
 import styles from "./TripIntentPanel.module.css";
 import { isAttractionStop, isOvernightStop, type Coordinates, type DraftEditAction, type TripDraft } from "@/types/trip";
-import type { FinalRoutePreviewState } from "@/types/final-route";
+import type { FinalRoutePreviewState, TripFinalizationState } from "@/types/final-route";
 import { formatApproximateDistance, formatApproximateDuration } from "@/lib/trip/formatters";
+import { hasStaleDayPlans } from "@/lib/trip/day-plan-coherence";
 
 type DraftSummaryProps = {
   draft: TripDraft;
@@ -31,6 +32,10 @@ type DraftSummaryProps = {
   finalPreview: FinalRoutePreviewState;
   onPreviewFinalRoute: () => void;
   onBackToDraft: () => void;
+  finalizationState: TripFinalizationState;
+  onRequestFinalize: () => void;
+  onConfirmFinalize: () => void;
+  onCancelFinalize: () => void;
 };
 
 function signedDuration(seconds: number) {
@@ -67,21 +72,25 @@ export default function DraftSummary({
   finalPreview,
   onPreviewFinalRoute,
   onBackToDraft,
+  finalizationState,
+  onRequestFinalize,
+  onConfirmFinalize,
+  onCancelFinalize,
 }: DraftSummaryProps) {
   const replacementTarget = draft.stops.find(
     (stop) =>
       isAttractionStop(stop) && stop.attractionId === replacementTargetId
   );
-  const dayPlansStale = draft.multiDay.isMultiDay && draft.dayPlans.some((plan) => {
-    if (plan.end.kind !== "overnight" || plan.end.nightIndex === null) return false;
-    const current = draft.stops.find((stop) => isOvernightStop(stop) && stop.nightIndex === plan.end.nightIndex);
-    return !current || current.label !== plan.end.label || current.coordinates.lat !== plan.end.coordinates.lat || current.coordinates.lon !== plan.end.coordinates.lon;
-  });
+  const dayPlansStale = hasStaleDayPlans(draft);
 
   return (
     <div className={styles.draftWorkspace}>
-      <TripSummary draft={draft} onEditTrip={onEditTrip} />
-      {finalPreview.status === "active" ? <section className={styles.finalPreview} aria-label="Final route preview">
+      <TripSummary draft={draft} onEditTrip={onEditTrip} finalization={finalizationState.status === "planned" ? finalizationState.result : null} />
+      {finalizationState.status === "planned" ? <section className={styles.finalizedNotice} aria-label="Planned trip">
+        <strong>PLANNED</strong>
+        <span>Final route · HERE</span>
+        <small>Finalized {new Date(finalizationState.result.finalizedAt).toLocaleString()}</small>
+      </section> : finalPreview.status === "active" ? <section className={styles.finalPreview} aria-label="Final route preview">
         <div><strong>Final route preview</strong><small>HERE · Temporary preview</small></div>
         <dl><div><dt>Driving time</dt><dd>{formatApproximateDuration(finalPreview.result.summary.durationSeconds)}</dd></div><div><dt>Distance</dt><dd>{formatApproximateDistance(finalPreview.result.summary.distanceKm)}</dd></div></dl>
         <button type="button" onClick={onBackToDraft}>Back to draft</button>
@@ -90,6 +99,14 @@ export default function DraftSummary({
         <small>Uses HERE for a temporary final-route preview. Your Draft stays unchanged.</small>
         {finalPreview.status === "error" ? <span role="alert">{finalPreview.message}</span> : null}
       </div>}
+      {ownershipStatus === "saved" && finalizationState.status !== "planned" ? <div className={styles.finalizeAction}>
+        {finalizationState.status === "confirming" ? <div role="dialog" aria-label="Finalize this trip?">
+          <strong>Finalize this trip?</strong><p>We&apos;ll calculate the final route through your selected stops with HERE. The finalized version can&apos;t be edited.</p>
+          <span><button type="button" onClick={onCancelFinalize}>Cancel</button><button type="button" onClick={onConfirmFinalize}>Finalize trip</button></span>
+        </div> : <button type="button" disabled={isDirty || dayPlansStale || isEditing || finalizationState.status === "finalizing"} onClick={onRequestFinalize}>{finalizationState.status === "finalizing" ? "Finalizing trip…" : "Finalize trip"}</button>}
+        {isDirty || dayPlansStale ? <small>Rebuild the trip before finalizing.</small> : null}
+        {finalizationState.status === "error" ? <small role="alert">{finalizationState.message}</small> : null}
+      </div> : null}
       <div className={styles.ownershipAction}>
         {ownershipStatus === "saved" ? <span>Saved to your map</span> : (
           <button type="button" disabled={isDirty || isEditing || ownershipStatus === "saving"} onClick={onSave}>
@@ -99,7 +116,7 @@ export default function DraftSummary({
         {isDirty ? <small>Rebuild the trip before saving.</small> : null}
         {ownershipStatus === "error" ? <small role="alert">The trip is not saved. Please try again.</small> : null}
       </div>
-      {draft.lastEdit ? (
+      {finalizationState.status !== "planned" && draft.lastEdit ? (
         <p className={styles.editImpact} role="status">
           Route updated · {signedDuration(draft.lastEdit.deltaDurationSeconds)} driving · {signedDistance(draft.lastEdit.deltaDistanceKm)}
         </p>
@@ -107,7 +124,7 @@ export default function DraftSummary({
       {editError ? <p className={styles.error} role="alert">{editError}</p> : null}
       {isEditing ? <p className={styles.editingNotice}>Updating route…</p> : null}
 
-      {replacementTarget ? (
+      {finalizationState.status !== "planned" && replacementTarget ? (
         <div className={styles.replacementMode} role="status">
           <span>Replacing</span>
           <strong>{replacementTarget.label}</strong>
@@ -118,7 +135,7 @@ export default function DraftSummary({
         </div>
       ) : null}
 
-      {dayPlansStale ? <p className={styles.dayPlansStale} role="status">Trip structure changed. Rebuild to refresh day suggestions.</p> : null}
+      {finalizationState.status !== "planned" && dayPlansStale ? <p className={styles.dayPlansStale} role="status">Trip structure changed. Rebuild to refresh day suggestions.</p> : null}
       <RouteStops
         key={`${draft.multiDay.selectedDays}-${draft.stops.filter(isOvernightStop).map((stop) => stop.geonameId).join("-")}`}
         draft={draft}
@@ -126,7 +143,8 @@ export default function DraftSummary({
         activeNightIndex={activeNightIndex}
         hoveredPoiId={hoveredPoiId}
         replacementTargetId={replacementTargetId}
-        isEditing={isEditing}
+        isEditing={isEditing || finalizationState.status === "planned"}
+        readOnly={finalizationState.status === "planned"}
         onPoiHover={onPoiHover}
         onPoiSelect={onPoiSelect}
         onOvernightSelect={onOvernightSelect}
@@ -137,13 +155,15 @@ export default function DraftSummary({
         onChangeOvernight={onChangeOvernight}
       />
 
-      {finalPreview.status !== "active" && (draft.summary.hasToll || draft.summary.hasFerry) ? (
+      {finalizationState.status !== "planned" && finalPreview.status !== "active" && (draft.summary.hasToll || draft.summary.hasFerry) ? (
         <ul className={styles.routeIndicators} aria-label="Route indicators">
           {draft.summary.hasToll ? <li>Includes tolls</li> : null}
           {draft.summary.hasFerry ? <li>Includes a ferry</li> : null}
         </ul>
       ) : null}
-      {isDirty ? (
+      {finalizationState.status === "planned" ? (
+        <p className={styles.draftNotice}>This trip is finalized and can&apos;t be edited.</p>
+      ) : isDirty ? (
         <p className={styles.dirtyNotice} role="status">
           Trip inputs changed — rebuild route.
         </p>

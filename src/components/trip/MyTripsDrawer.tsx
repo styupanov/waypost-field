@@ -29,7 +29,7 @@ export default function MyTripsDrawer({ open, currentTripId, onClose }: { open: 
       <ul>{trips.map((trip) => <li key={trip.id} className={trip.id === currentTripId ? "current" : undefined}>
         <button onClick={() => { onClose(); router.push(`/?trip=${trip.id}`); }}>
           <strong>{trip.originLabel ?? "Unknown origin"} → {trip.destinationLabel ?? "Unknown destination"}</strong>
-          <span>{trip.versionState === "draft" ? "Draft" : trip.versionState ?? trip.status} · {trip.attractionStopCount} attraction{trip.attractionStopCount === 1 ? "" : "s"}</span>
+          <span>{trip.status === "planned" ? "Planned" : "Draft"} · {trip.preferences?.selectedTripDays ?? 1} day{(trip.preferences?.selectedTripDays ?? 1) === 1 ? "" : "s"} · {trip.attractionStopCount} attraction{trip.attractionStopCount === 1 ? "" : "s"}</span>
           <small>Updated {dateLabel(trip.updatedAt)}{trip.id === currentTripId ? " · Open" : ""}</small>
         </button>
       </li>)}</ul>}

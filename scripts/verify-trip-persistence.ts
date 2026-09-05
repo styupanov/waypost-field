@@ -76,10 +76,11 @@ try {
   });
   const saved = await saveCurrentDraftVersion(tripId, modifiedDraft);
 
-  await pool.query(
-    "UPDATE public.trip_versions SET state='finalized', finalized_at=now() WHERE id=$1",
-    [saved.id]
-  );
+  await pool.query("BEGIN");
+  await pool.query(`INSERT INTO public.provider_route_cache (trip_version_id,provider,route_geom,distance_meters,duration_seconds,waypoint_count,section_count,fetched_at,expires_at) VALUES ($1,'here',ST_GeomFromText('LINESTRING(-80 35,-79 36)',4326),1,1,2,1,now(),now()+interval '30 days')`, [saved.id]);
+  await pool.query("UPDATE public.trip_versions SET state='finalized', finalized_at=now(), finalization_provider='here' WHERE id=$1", [saved.id]);
+  await pool.query("UPDATE public.trips SET status='planned' WHERE id=$1", [tripId]);
+  await pool.query("COMMIT");
   let finalizedProtection = false;
   try {
     await saveCurrentDraftVersion(tripId, modifiedDraft);

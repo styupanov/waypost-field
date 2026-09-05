@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     const body = await request.json() as { draft?: TripDraft; nightIndex?: number; geonameId?: number; ownedTripId?: string | null };
     if (!body.draft || !Number.isSafeInteger(body.nightIndex) || !Number.isSafeInteger(body.geonameId)) return NextResponse.json({ error: { code: "INVALID_OVERNIGHT_EDIT", message: "A valid overnight change is required." } }, { status: 400 });
     let userId: string | null = null;
-    if (body.ownedTripId) { userId = await authenticatedWaypostUserId(); if (!userId) return NextResponse.json({ error: { code: "UNAUTHORIZED" } }, { status: 401 }); await assertTripOwnership(userId, body.ownedTripId); }
+    if (body.ownedTripId) { userId = await authenticatedWaypostUserId(); if (!userId) return NextResponse.json({ error: { code: "UNAUTHORIZED" } }, { status: 401 }); const ownedTrip = await assertTripOwnership(userId, body.ownedTripId); if (ownedTrip.currentVersion?.state !== "draft") return NextResponse.json({ error: { code: "FINALIZED_VERSION_IMMUTABLE", message: "A finalized trip version cannot be changed." } }, { status: 409 }); }
     const draft = await changeOvernight(body.draft, body.nightIndex!, body.geonameId!);
     if (body.ownedTripId && userId) await saveOwnedCurrentDraftVersion(userId, body.ownedTripId, draft);
     return NextResponse.json(draft);

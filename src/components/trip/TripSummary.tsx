@@ -4,13 +4,16 @@ import {
   formatApproximateDuration,
 } from "@/lib/trip/formatters";
 import type { TripDraft } from "@/types/trip";
+import type { FinalizedTripResult } from "@/types/final-route";
 
 type TripSummaryProps = {
   draft: TripDraft;
   onEditTrip: () => void;
+  finalization: FinalizedTripResult | null;
 };
 
-export default function TripSummary({ draft, onEditTrip }: TripSummaryProps) {
+export default function TripSummary({ draft, onEditTrip, finalization }: TripSummaryProps) {
+  const summary = finalization?.finalRoute.summary ?? draft.summary;
   return (
     <section className={styles.tripSummary} aria-labelledby="trip-summary-heading">
       <div className={styles.draftHeading}>
@@ -18,19 +21,19 @@ export default function TripSummary({ draft, onEditTrip }: TripSummaryProps) {
           <h2 id="trip-summary-heading">
             {draft.origin.label} <span aria-hidden="true">→</span> {draft.destination.label}
           </h2>
-          <small>Draft · Approximate</small>
-          {draft.multiDay.isMultiDay ? <p className={styles.multiDaySummary}>{draft.multiDay.selectedDays} days · {draft.multiDay.nights} nights · {formatApproximateDuration(draft.summary.durationSeconds)} driving</p> : null}
+          <small>{finalization ? "Planned · Final route · HERE" : "Draft · Approximate"}</small>
+          {draft.multiDay.isMultiDay ? <p className={styles.multiDaySummary}>{draft.multiDay.selectedDays} days · {draft.multiDay.nights} nights · {formatApproximateDuration(summary.durationSeconds)} driving</p> : null}
         </div>
-        <button type="button" onClick={onEditTrip}>Edit trip</button>
+        {!finalization ? <button type="button" onClick={onEditTrip}>Edit trip</button> : null}
       </div>
       <dl className={styles.summaryMetrics}>
         <div>
           <dt>Driving time</dt>
-          <dd>{formatApproximateDuration(draft.summary.durationSeconds)}</dd>
+          <dd>{formatApproximateDuration(summary.durationSeconds)}</dd>
         </div>
         <div>
           <dt>Distance</dt>
-          <dd>{formatApproximateDistance(draft.summary.distanceKm)}</dd>
+          <dd>{formatApproximateDistance(summary.distanceKm)}</dd>
         </div>
         <div>
           <dt>Attraction stops</dt>

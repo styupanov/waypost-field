@@ -3,7 +3,7 @@ import type { InterestCategory, TripPreferences } from "@/types/preferences";
 import type { RouteFeature, RouteSummary } from "@/types/route";
 import type { Coordinates, DraftDayPlan } from "@/types/trip";
 
-export type PersistedTripStatus = "draft";
+export type PersistedTripStatus = "draft" | "planned";
 export type PersistedTripVersionState = "draft" | "finalized";
 export type PersistedStopType = "origin" | "destination" | "waypoint" | "attraction" | "overnight";
 export type PersistedStopSource = "user" | "waypost";
@@ -57,6 +57,7 @@ export type PersistedTripVersion = {
   createdAt: string;
   updatedAt: string;
   finalizedAt: string | null;
+  finalizationProvider: "here" | null;
 };
 
 export type PersistedTrip = {

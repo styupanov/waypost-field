@@ -14,6 +14,8 @@
     "test:overnights": "node --experimental-strip-types scripts/verify-overnight-domain.ts",
     "test:day-composition": "node --experimental-strip-types scripts/verify-day-composition.ts",
     "test:here-routing": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types scripts/verify-here-routing.ts",
+    "test:finalization": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-finalization.ts",
+    "db:smoke-finalization": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/smoke-finalization.ts",
     "db:verify-overnights": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-overnight-persistence.ts"
   },
   "dependencies": {

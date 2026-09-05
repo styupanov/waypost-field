@@ -17,6 +17,7 @@ import type {
   TripListItem,
 } from "@/types/trip-persistence";
 import type { RouteSummary } from "@/types/route";
+import type { FinalRoutePreview, FinalizedTripResult } from "@/types/final-route";
 
 export class TripPersistenceError extends Error {
   readonly code:
@@ -25,7 +26,9 @@ export class TripPersistenceError extends Error {
     | "USER_NOT_FOUND"
     | "TRIP_NOT_FOUND"
     | "CURRENT_VERSION_NOT_FOUND"
-    | "FINALIZED_VERSION_IMMUTABLE";
+    | "FINALIZED_VERSION_IMMUTABLE"
+    | "FINALIZED_CACHE_MISSING"
+    | "TRIP_CHANGED_DURING_FINALIZATION";
 
   constructor(
     code:
@@ -34,7 +37,9 @@ export class TripPersistenceError extends Error {
       | "USER_NOT_FOUND"
       | "TRIP_NOT_FOUND"
       | "CURRENT_VERSION_NOT_FOUND"
-      | "FINALIZED_VERSION_IMMUTABLE",
+      | "FINALIZED_VERSION_IMMUTABLE"
+      | "FINALIZED_CACHE_MISSING"
+      | "TRIP_CHANGED_DURING_FINALIZATION",
     message: string
   ) {
     super(message);
@@ -47,7 +52,7 @@ type TripRow = {
   id: string;
   user_id: string;
   title: string | null;
-  status: "draft";
+  status: "draft" | "planned";
   current_version_id: string | null;
   created_at: Date;
   updated_at: Date;
@@ -77,6 +82,7 @@ type VersionRow = {
   created_at: Date;
   updated_at: Date;
   finalized_at: Date | null;
+  finalization_provider: "here" | null;
 };
 
 type StopRow = {
@@ -293,7 +299,8 @@ async function loadVersion(client: PoolClient, versionId: string): Promise<Persi
       distance_m, duration_seconds, has_toll, has_highway, has_ferry,
       baseline_distance_m, baseline_duration_seconds, baseline_has_toll,
       baseline_has_highway, baseline_has_ferry, driving_detour_seconds,
-      routing_engine, routing_engine_version, planner_version, day_planning_metadata, created_at, updated_at, finalized_at
+      routing_engine, routing_engine_version, planner_version, day_planning_metadata, created_at, updated_at, finalized_at,
+      finalization_provider
      FROM public.trip_versions WHERE id = $1`,
     [versionId]
   );
@@ -325,6 +332,7 @@ async function loadVersion(client: PoolClient, versionId: string): Promise<Persi
     })),
     createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(),
     finalizedAt: row.finalized_at?.toISOString() ?? null,
+    finalizationProvider: row.finalization_provider,
   };
 }
 
@@ -354,7 +362,7 @@ export async function getCurrentTripVersion(tripId: string) {
 }
 
 type TripListRow = {
-  id: string; status: "draft"; current_version_id: string | null;
+  id: string; status: "draft" | "planned"; current_version_id: string | null;
   version_state: PersistedTripVersionState | null;
   preferences: PersistedTripVersion["preferences"] | null;
   origin_label: string | null; destination_label: string | null;
@@ -452,4 +460,105 @@ export async function saveCurrentDraftVersion(
     await client.query("UPDATE public.trips SET updated_at=now() WHERE id=$1", [tripId]);
   });
   return getCurrentTripVersion(tripId);
+}
+
+export const HERE_ROUTE_CACHE_TTL_DAYS = 30;
+
+type FinalRouteCacheRow = {
+  trip_version_id: string;
+  route_geometry: { type: "LineString"; coordinates: [number, number][] };
+  distance_meters: string | number;
+  duration_seconds: string | number;
+  base_duration_seconds: string | number | null;
+  fetched_at: Date;
+  expires_at: Date;
+};
+
+function finalizedResult(tripId: string, versionId: string, finalizedAt: string, row: FinalRouteCacheRow): FinalizedTripResult {
+  return {
+    tripId, versionId, tripStatus: "planned", versionState: "finalized", finalizedAt, provider: "here",
+    finalRoute: {
+      route: row.route_geometry,
+      summary: {
+        distanceKm: Number(row.distance_meters) / 1000,
+        durationSeconds: Number(row.duration_seconds),
+        baseDurationSeconds: row.base_duration_seconds === null ? null : Number(row.base_duration_seconds),
+      },
+    },
+    cache: { fetchedAt: row.fetched_at.toISOString(), expiresAt: row.expires_at.toISOString() },
+  };
+}
+
+async function loadFinalRouteCache(client: PoolClient, versionId: string) {
+  const result = await client.query<FinalRouteCacheRow>(
+    `SELECT trip_version_id, ST_AsGeoJSON(route_geom)::json AS route_geometry,
+      distance_meters, duration_seconds, base_duration_seconds, fetched_at, expires_at
+     FROM public.provider_route_cache WHERE trip_version_id=$1 AND provider='here'`,
+    [versionId]
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function getExistingFinalization(userId: string, tripId: string): Promise<FinalizedTripResult | null> {
+  const trip = await getOwnedTrip(userId, tripId);
+  if (!trip) throw new TripPersistenceError("TRIP_NOT_FOUND", "Trip was not found.");
+  const version = trip.currentVersion;
+  if (!version) throw new TripPersistenceError("CURRENT_VERSION_NOT_FOUND", "Trip has no current version.");
+  if (version.state !== "finalized") return null;
+  const client = await getPostgresPool().connect();
+  try {
+    const cache = await loadFinalRouteCache(client, version.id);
+    if (!cache) throw new TripPersistenceError("FINALIZED_CACHE_MISSING", "Finalized route cache is unavailable.");
+    if (cache.expires_at.getTime() <= Date.now()) throw new TripPersistenceError("FINALIZED_CACHE_MISSING", "Finalized route cache has expired.");
+    return finalizedResult(trip.id, version.id, version.finalizedAt!, cache);
+  } finally { client.release(); }
+}
+
+export async function commitOwnedTripFinalization(
+  userId: string,
+  tripId: string,
+  expectedVersionId: string,
+  expectedUpdatedAt: string,
+  route: FinalRoutePreview
+): Promise<FinalizedTripResult> {
+  assertUuid(userId); assertUuid(tripId); assertUuid(expectedVersionId);
+  return inTransaction((client) => commitTripFinalizationTransaction(client, userId, tripId, expectedVersionId, expectedUpdatedAt, route));
+}
+
+export async function commitTripFinalizationTransaction(
+  client: PoolClient,
+  userId: string,
+  tripId: string,
+  expectedVersionId: string,
+  expectedUpdatedAt: string,
+  route: FinalRoutePreview
+) {
+    const tripResult = await client.query<{ user_id: string; status: "draft" | "planned"; current_version_id: string | null }>(
+      "SELECT user_id, status, current_version_id FROM public.trips WHERE id=$1 FOR UPDATE", [tripId]
+    );
+    const trip = tripResult.rows[0];
+    if (!trip || trip.user_id !== userId) throw new TripPersistenceError("TRIP_NOT_FOUND", "Trip was not found.");
+    if (trip.current_version_id !== expectedVersionId) throw new TripPersistenceError("TRIP_CHANGED_DURING_FINALIZATION", "Trip changed during finalization.");
+    const versionResult = await client.query<{ state: PersistedTripVersionState; updated_at: Date; finalized_at: Date | null }>(
+      "SELECT state, updated_at, finalized_at FROM public.trip_versions WHERE id=$1 AND trip_id=$2 FOR UPDATE", [expectedVersionId, tripId]
+    );
+    const version = versionResult.rows[0];
+    if (!version || version.state !== "draft" || version.updated_at.toISOString() !== expectedUpdatedAt) {
+      throw new TripPersistenceError("TRIP_CHANGED_DURING_FINALIZATION", "Trip changed during finalization.");
+    }
+    const fetchedAt = new Date();
+    const expiresAt = new Date(fetchedAt.getTime() + HERE_ROUTE_CACHE_TTL_DAYS * 24 * 60 * 60 * 1000);
+    const cacheResult = await client.query<FinalRouteCacheRow>(
+      `INSERT INTO public.provider_route_cache (
+        trip_version_id, provider, route_geom, distance_meters, duration_seconds,
+        base_duration_seconds, waypoint_count, section_count, fetched_at, expires_at
+      ) VALUES ($1, 'here', ST_SetSRID(ST_GeomFromGeoJSON($2),4326), $3, $4, $5, $6, $7, $8, $9)
+      RETURNING trip_version_id, ST_AsGeoJSON(route_geom)::json AS route_geometry,
+        distance_meters, duration_seconds, base_duration_seconds, fetched_at, expires_at`,
+      [expectedVersionId, JSON.stringify(route.route), Math.round(route.summary.distanceKm * 1000), Math.round(route.summary.durationSeconds), route.summary.baseDurationSeconds === null ? null : Math.round(route.summary.baseDurationSeconds), route.diagnostics.waypointCount, route.diagnostics.sectionCount, fetchedAt, expiresAt]
+    );
+    const finalizedAt = new Date();
+    await client.query("UPDATE public.trip_versions SET state='finalized', finalized_at=$1, finalization_provider='here', updated_at=now() WHERE id=$2", [finalizedAt, expectedVersionId]);
+    await client.query("UPDATE public.trips SET status='planned', updated_at=now() WHERE id=$1", [tripId]);
+  return finalizedResult(tripId, expectedVersionId, finalizedAt.toISOString(), cacheResult.rows[0]);
 }

@@ -7,6 +7,7 @@ import { isAttractionStop, isOvernightStop, type Coordinates, type DraftAttracti
 type Props = {
   draft: TripDraft; activePoiId: number | null; activeNightIndex: number | null;
   hoveredPoiId: number | null; replacementTargetId: number | null; isEditing: boolean;
+  readOnly: boolean;
   onPoiHover: (id: number | null) => void; onPoiSelect: (id: number) => void;
   onOvernightSelect: (night: number) => void; onDayFocus: (points: Coordinates[]) => void;
   onRemove: (id: number) => void; onStartReplacement: (id: number) => void;
@@ -20,10 +21,10 @@ function Attraction({ stop, active, replacing, props, cardRef }: { stop: DraftAt
     <div className={styles.routeStopContent}>
       <button className={styles.poiNameButton} type="button" onClick={() => props.onPoiSelect(stop.attractionId)}>{stop.label}</button>
       <small>{stop.source === "waypost" ? "Waypost suggestion" : "Added by you"}{stop.duration ? ` · ${stop.duration} visit` : ""}</small>
-      <div className={styles.routeStopActions}>
+      {!props.readOnly ? <div className={styles.routeStopActions}>
         <button type="button" disabled={props.isEditing} onClick={() => props.onStartReplacement(stop.attractionId)}>Replace</button>
         <button type="button" disabled={props.isEditing} onClick={() => props.onRemove(stop.attractionId)}>Remove</button>
-      </div>
+      </div> : null}
     </div>
   </li>;
 }
@@ -35,8 +36,8 @@ function Overnight({ stop, active, changing, props, toggle }: { stop: DraftOvern
     <div className={styles.routeStopContent}>
       <button type="button" className={styles.poiNameButton} onClick={() => props.onOvernightSelect(stop.nightIndex)}>{stop.label}{stop.admin1Code ? `, ${stop.admin1Code}` : ""} area</button>
       <small>Night {stop.nightIndex} · Approximate overnight area</small>
-      <div className={styles.routeStopActions}><button type="button" disabled={props.isEditing} aria-expanded={changing} onClick={async () => { if (!changing) await props.onLoadOvernightAlternatives(stop.nightIndex); toggle(); }}>{changing ? "Cancel" : "Change"}</button></div>
-      {changing ? <ul className={styles.overnightChoices}>{alternatives.filter((item) => item.geonameId !== stop.geonameId).map((item) => <li key={item.geonameId}>
+      {!props.readOnly ? <div className={styles.routeStopActions}><button type="button" disabled={props.isEditing} aria-expanded={changing} onClick={async () => { if (!changing) await props.onLoadOvernightAlternatives(stop.nightIndex); toggle(); }}>{changing ? "Cancel" : "Change"}</button></div> : null}
+      {changing && !props.readOnly ? <ul className={styles.overnightChoices}>{alternatives.filter((item) => item.geonameId !== stop.geonameId).map((item) => <li key={item.geonameId}>
         <div><strong>{item.name}{item.admin1Code ? `, ${item.admin1Code}` : ""} area</strong><small>≈ {Math.round(item.targetTimeDeviationMinutes)} min from target · +{Math.round(item.detourDurationSeconds / 60)} min driving</small></div>
         <button type="button" disabled={props.isEditing} onClick={async () => { await props.onChangeOvernight(stop.nightIndex, item.geonameId); toggle(); }}>Choose</button>
       </li>)}</ul> : null}

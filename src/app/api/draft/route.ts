@@ -63,7 +63,8 @@ export async function POST(request: Request) {
     if (ownedTripId) {
       userId = await authenticatedWaypostUserId();
       if (!userId) return errorResponse("UNAUTHORIZED", "Sign in is required.", 401);
-      await assertTripOwnership(userId, ownedTripId);
+      const ownedTrip = await assertTripOwnership(userId, ownedTripId);
+      if (ownedTrip.currentVersion?.state !== "draft") return errorResponse("FINALIZED_VERSION_IMMUTABLE", "A finalized trip version cannot be changed.", 409);
     }
     const draft = await composeTripDraft({ origin, stop, destination, preferences, hardUserAttractions, existingUserOvernights, previousSelectedTripDays });
     if (ownedTripId && userId) await saveOwnedCurrentDraftVersion(userId, ownedTripId, draft);

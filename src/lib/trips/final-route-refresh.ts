@@ -5,7 +5,7 @@ import { getFinalizedTripWorkspace, getOwnedTrip, refreshOwnedFinalRouteCache, T
 
 // Refresh changes only temporary provider representation. It is not a new
 // finalization, TripVersion, itinerary mutation, or future credit event.
-export async function refreshFinalRoute(userId: string, tripId: string) {
+export async function refreshFinalRoute(userId: string, tripId: string, options: { calculateRoute?: typeof calculateHereFinalRoute } = {}) {
   const workspace = await getFinalizedTripWorkspace(userId, tripId);
   if (!workspace) throw new TripPersistenceError("TRIP_NOT_FINALIZED", "Trip is not finalized.");
   if (workspace.cache.status === "valid") {
@@ -14,6 +14,6 @@ export async function refreshFinalRoute(userId: string, tripId: string) {
   const trip = await getOwnedTrip(userId, tripId);
   if (!trip?.currentVersion || trip.currentVersion.id !== workspace.versionId) throw new TripPersistenceError("TRIP_NOT_FINALIZED", "Trip is not finalized.");
   const draft = reconstructTripDraft(trip);
-  const route = await calculateHereFinalRoute(orderedWaypointsFromDraft(draft));
+  const route = await (options.calculateRoute ?? calculateHereFinalRoute)(orderedWaypointsFromDraft(draft));
   return refreshOwnedFinalRouteCache(userId, tripId, workspace.versionId, route);
 }

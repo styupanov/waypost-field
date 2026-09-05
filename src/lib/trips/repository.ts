@@ -14,6 +14,7 @@ import type {
   PersistedTripStop,
   PersistedTripVersion,
   PersistedTripVersionState,
+  PersistedTripStatus,
   TripListItem,
 } from "@/types/trip-persistence";
 import type { RouteSummary } from "@/types/route";
@@ -57,8 +58,10 @@ type TripRow = {
   id: string;
   user_id: string;
   title: string | null;
-  status: "draft" | "planned";
+  status: PersistedTripStatus;
   current_version_id: string | null;
+  started_at: Date | null;
+  ended_at: Date | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -352,6 +355,8 @@ export async function getTrip(tripId: string): Promise<PersistedTrip | null> {
       id: row.id, userId: row.user_id, title: row.title, status: row.status,
       currentVersionId: row.current_version_id,
       currentVersion: row.current_version_id ? await loadVersion(client, row.current_version_id) : null,
+      startedAt: row.started_at?.toISOString() ?? null,
+      endedAt: row.ended_at?.toISOString() ?? null,
       createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(),
     };
   } finally {
@@ -367,11 +372,11 @@ export async function getCurrentTripVersion(tripId: string) {
 }
 
 type TripListRow = {
-  id: string; status: "draft" | "planned"; current_version_id: string | null;
+  id: string; status: PersistedTripStatus; current_version_id: string | null;
   version_state: PersistedTripVersionState | null;
   preferences: PersistedTripVersion["preferences"] | null;
   origin_label: string | null; destination_label: string | null;
-  attraction_stop_count: string; created_at: Date; updated_at: Date;
+  attraction_stop_count: string; started_at: Date | null; ended_at: Date | null; created_at: Date; updated_at: Date;
 };
 
 export async function listTripsForUser(userId: string): Promise<TripListItem[]> {
@@ -382,7 +387,7 @@ export async function listTripsForUser(userId: string): Promise<TripListItem[]> 
        MAX(s.label) FILTER (WHERE s.stop_type = 'origin') AS origin_label,
        MAX(s.label) FILTER (WHERE s.stop_type = 'destination') AS destination_label,
        COUNT(*) FILTER (WHERE s.stop_type = 'attraction') AS attraction_stop_count,
-       t.created_at, t.updated_at
+       t.started_at, t.ended_at, t.created_at, t.updated_at
      FROM public.trips t
      LEFT JOIN public.trip_versions v ON v.id = t.current_version_id
      LEFT JOIN public.trip_stops s ON s.trip_version_id = v.id
@@ -397,6 +402,7 @@ export async function listTripsForUser(userId: string): Promise<TripListItem[]> 
     versionState: row.version_state, originLabel: row.origin_label,
     destinationLabel: row.destination_label,
     attractionStopCount: Number(row.attraction_stop_count), preferences: row.preferences,
+    startedAt: row.started_at?.toISOString() ?? null, endedAt: row.ended_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(),
   }));
 }
@@ -479,9 +485,9 @@ type FinalRouteCacheRow = {
   expires_at: Date;
 };
 
-function finalizedResult(tripId: string, versionId: string, finalizedAt: string, row: FinalRouteCacheRow): FinalizedTripResult {
+function finalizedResult(tripId: string, versionId: string, tripStatus: import("@/types/final-route").ExecutableTripStatus, finalizedAt: string, row: FinalRouteCacheRow): FinalizedTripResult {
   return {
-    tripId, versionId, tripStatus: "planned", versionState: "finalized", finalizedAt, provider: "here",
+    tripId, versionId, tripStatus, versionState: "finalized", finalizedAt, provider: "here",
     finalRoute: {
       route: row.route_geometry,
       summary: {
@@ -508,7 +514,7 @@ export async function getExistingFinalization(userId: string, tripId: string): P
   const workspace = await getFinalizedTripWorkspace(userId, tripId);
   if (!workspace) return null;
   if (workspace.cache.status !== "valid") throw new TripPersistenceError("FINALIZED_CACHE_MISSING", `Finalized route cache is ${workspace.cache.status}.`);
-  return { tripId: workspace.tripId, versionId: workspace.versionId, tripStatus: "planned", versionState: "finalized", finalizedAt: workspace.finalizedAt, provider: "here", finalRoute: workspace.cache.finalRoute, cache: { status: "valid", fetchedAt: workspace.cache.fetchedAt, expiresAt: workspace.cache.expiresAt } };
+  return { tripId: workspace.tripId, versionId: workspace.versionId, tripStatus: workspace.tripStatus, versionState: "finalized", finalizedAt: workspace.finalizedAt, provider: "here", finalRoute: workspace.cache.finalRoute, cache: { status: "valid", fetchedAt: workspace.cache.fetchedAt, expiresAt: workspace.cache.expiresAt } };
 }
 
 export async function getFinalizedTripWorkspace(userId: string, tripId: string): Promise<FinalizedTripWorkspace | null> {
@@ -517,15 +523,15 @@ export async function getFinalizedTripWorkspace(userId: string, tripId: string):
   const version = trip.currentVersion;
   if (!version) throw new TripPersistenceError("CURRENT_VERSION_NOT_FOUND", "Trip has no current version.");
   if (version.state !== "finalized") return null;
-  if (trip.status !== "planned") throw new TripPersistenceError("TRIP_NOT_FINALIZED", "Trip is not planned.");
+  if (trip.status === "draft") throw new TripPersistenceError("TRIP_NOT_FINALIZED", "Trip is not finalized.");
   if (version.finalizationProvider !== "here") throw new TripPersistenceError("FINALIZATION_PROVIDER_UNSUPPORTED", "Finalized route provider is unsupported.");
   const client = await getPostgresPool().connect();
   try {
     const row = await loadFinalRouteCache(client, version.id);
-    const base = { tripId: trip.id, versionId: version.id, tripStatus: "planned" as const, versionState: "finalized" as const, finalizedAt: version.finalizedAt!, provider: "here" as const };
+    const base = { tripId: trip.id, versionId: version.id, tripStatus: trip.status, startedAt: trip.startedAt, endedAt: trip.endedAt, versionState: "finalized" as const, finalizedAt: version.finalizedAt!, provider: "here" as const };
     if (!row) return { ...base, cache: { status: "missing", provider: "here", fetchedAt: null, expiresAt: null } };
     if (row.expires_at.getTime() <= Date.now()) return { ...base, cache: { status: "expired", provider: "here", fetchedAt: row.fetched_at.toISOString(), expiresAt: row.expires_at.toISOString() } };
-    const result = finalizedResult(trip.id, version.id, version.finalizedAt!, row);
+    const result = finalizedResult(trip.id, version.id, trip.status, version.finalizedAt!, row);
     return { ...base, cache: { status: "valid", provider: "here", fetchedAt: result.cache.fetchedAt, expiresAt: result.cache.expiresAt, finalRoute: result.finalRoute } };
   } finally { client.release(); }
 }
@@ -577,7 +583,7 @@ export async function commitTripFinalizationTransaction(
     await client.query("UPDATE public.trip_versions SET state='finalized', finalized_at=$1, finalization_provider='here', updated_at=now() WHERE id=$2", [finalizedAt, expectedVersionId]);
     await client.query("UPDATE public.trips SET status='planned', updated_at=now() WHERE id=$1", [tripId]);
     await consumeFinalizationCredit(client, userId, expectedVersionId);
-  return finalizedResult(tripId, expectedVersionId, finalizedAt.toISOString(), cacheResult.rows[0]);
+  return finalizedResult(tripId, expectedVersionId, "planned", finalizedAt.toISOString(), cacheResult.rows[0]);
 }
 
 export async function refreshOwnedFinalRouteCache(userId: string, tripId: string, expectedVersionId: string, route: FinalRoutePreview) {
@@ -586,16 +592,16 @@ export async function refreshOwnedFinalRouteCache(userId: string, tripId: string
 }
 
 export async function refreshFinalRouteCacheTransaction(client: PoolClient, userId: string, tripId: string, expectedVersionId: string, route: FinalRoutePreview) {
-    const tripResult = await client.query<{ user_id: string; status: "draft" | "planned"; current_version_id: string | null }>("SELECT user_id,status,current_version_id FROM public.trips WHERE id=$1 FOR UPDATE", [tripId]);
+    const tripResult = await client.query<{ user_id: string; status: PersistedTripStatus; current_version_id: string | null }>("SELECT user_id,status,current_version_id FROM public.trips WHERE id=$1 FOR UPDATE", [tripId]);
     const trip = tripResult.rows[0];
     if (!trip || trip.user_id !== userId) throw new TripPersistenceError("TRIP_NOT_FOUND", "Trip was not found.");
-    if (trip.status !== "planned" || trip.current_version_id !== expectedVersionId) throw new TripPersistenceError("TRIP_NOT_FINALIZED", "Trip is not finalized.");
+    if (trip.status === "draft" || trip.current_version_id !== expectedVersionId) throw new TripPersistenceError("TRIP_NOT_FINALIZED", "Trip is not finalized.");
     const versionResult = await client.query<{ state: PersistedTripVersionState; finalized_at: Date; finalization_provider: string | null }>("SELECT state,finalized_at,finalization_provider FROM public.trip_versions WHERE id=$1 AND trip_id=$2 FOR UPDATE", [expectedVersionId, tripId]);
     const version = versionResult.rows[0];
     if (!version || version.state !== "finalized") throw new TripPersistenceError("TRIP_NOT_FINALIZED", "Trip is not finalized.");
     if (version.finalization_provider !== "here") throw new TripPersistenceError("FINALIZATION_PROVIDER_UNSUPPORTED", "Finalized route provider is unsupported.");
     const current = await loadFinalRouteCache(client, expectedVersionId);
-    if (current && current.expires_at.getTime() > Date.now()) return finalizedResult(tripId, expectedVersionId, version.finalized_at.toISOString(), current);
+    if (current && current.expires_at.getTime() > Date.now()) return finalizedResult(tripId, expectedVersionId, trip.status, version.finalized_at.toISOString(), current);
     const fetchedAt = new Date(); const expiresAt = new Date(fetchedAt.getTime() + HERE_ROUTE_CACHE_TTL_DAYS * 86_400_000);
     const cacheResult = await client.query<FinalRouteCacheRow>(
       `INSERT INTO public.provider_route_cache (trip_version_id,provider,route_geom,distance_meters,duration_seconds,base_duration_seconds,waypoint_count,section_count,fetched_at,expires_at)
@@ -604,5 +610,5 @@ export async function refreshFinalRouteCacheTransaction(client: PoolClient, user
        RETURNING trip_version_id,ST_AsGeoJSON(route_geom)::json AS route_geometry,distance_meters,duration_seconds,base_duration_seconds,fetched_at,expires_at`,
       [expectedVersionId, JSON.stringify(route.route), Math.round(route.summary.distanceKm * 1000), Math.round(route.summary.durationSeconds), route.summary.baseDurationSeconds === null ? null : Math.round(route.summary.baseDurationSeconds), route.diagnostics.waypointCount, route.diagnostics.sectionCount, fetchedAt, expiresAt]
     );
-  return finalizedResult(tripId, expectedVersionId, version.finalized_at.toISOString(), cacheResult.rows[0]);
+  return finalizedResult(tripId, expectedVersionId, trip.status, version.finalized_at.toISOString(), cacheResult.rows[0]);
 }

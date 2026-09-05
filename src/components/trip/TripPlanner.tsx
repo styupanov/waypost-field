@@ -27,7 +27,7 @@ import {
   type DrivingPace,
 } from "@/types/preferences";
 import { calculateTripDayRecommendation } from "@/lib/trip/multi-day";
-import type { FinalRoutePreview, FinalRoutePreviewState, FinalizedTripResult, FinalizedTripWorkspace, TripFinalizationState } from "@/types/final-route";
+import type { FinalRoutePreview, FinalRoutePreviewState, FinalizedTripResult, FinalizedTripWorkspace, TripFinalizationState, TripLifecycleActionState } from "@/types/final-route";
 
 const initialOrigin: TripEndpoint = {
   input: "Charlotte, NC",
@@ -80,6 +80,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
   const [finalizationState, setFinalizationState] = useState<TripFinalizationState>({ status: "draft" });
   const [refreshStatus, setRefreshStatus] = useState<"idle" | "refreshing" | "error">("idle");
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  const [lifecycleActionState, setLifecycleActionState] = useState<TripLifecycleActionState>({ status: "idle" });
   const [preferences, setPreferences] = useState<TripPreferences>(() => ({
     ...DEFAULT_TRIP_PREFERENCES,
     preferredCategories: [],
@@ -110,6 +111,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       setFinalPreview({ status: "idle" });
       setFinalizationState(data.finalization ? { status: "planned", result: data.finalization } : { status: "draft" });
       setRefreshStatus("idle");
+      setLifecycleActionState({ status: "idle" });
       setOrigin({ input: draft.origin.label, coordinates: draft.origin.coordinates, resolvedLabel: draft.origin.label, source: "text" });
       setDestination({ input: draft.destination.label, coordinates: draft.destination.coordinates, resolvedLabel: draft.destination.label, source: "text" });
       setStop(draft.stop ? { input: draft.stop.label, coordinates: draft.stop.coordinates, resolvedLabel: draft.stop.label, source: "text" } : null);
@@ -371,7 +373,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       const response = await fetch("/api/finalize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tripId: ownedTripId }) });
       const data = await response.json() as FinalizedTripResult | { error?: { message?: string } };
       if (!response.ok || !("tripStatus" in data)) throw new Error("error" in data ? data.error?.message : undefined);
-      const result: FinalizedTripWorkspace = { tripId: data.tripId, versionId: data.versionId, tripStatus: "planned", versionState: "finalized", finalizedAt: data.finalizedAt, provider: "here", cache: { status: "valid", provider: "here", fetchedAt: data.cache.fetchedAt, expiresAt: data.cache.expiresAt, finalRoute: data.finalRoute } };
+      const result: FinalizedTripWorkspace = { tripId: data.tripId, versionId: data.versionId, tripStatus: "planned", startedAt: null, endedAt: null, versionState: "finalized", finalizedAt: data.finalizedAt, provider: "here", cache: { status: "valid", provider: "here", fetchedAt: data.cache.fetchedAt, expiresAt: data.cache.expiresAt, finalRoute: data.finalRoute } };
       setFinalPreview({ status: "idle" }); setFinalizationState({ status: "planned", result }); setReplacementTargetId(null); setIsAlongTheWayOpen(false);
       void fetch("/api/credits").then(async (creditsResponse) => { if (creditsResponse.ok) setCreditBalance((await creditsResponse.json() as { balance: number }).balance); }).catch(() => undefined);
     } catch (reason) {
@@ -387,7 +389,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       const response = await fetch("/api/finalize/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tripId: ownedTripId }) });
       const data = await response.json() as FinalizedTripResult | { error?: { message?: string } };
       if (!response.ok || !("tripStatus" in data)) throw new Error("refresh failed");
-      setFinalizationState({ status: "planned", result: { tripId: data.tripId, versionId: data.versionId, tripStatus: "planned", versionState: "finalized", finalizedAt: data.finalizedAt, provider: "here", cache: { status: "valid", provider: "here", fetchedAt: data.cache.fetchedAt, expiresAt: data.cache.expiresAt, finalRoute: data.finalRoute } } });
+      setFinalizationState((current) => current.status === "planned" ? { status: "planned", result: { ...current.result, tripStatus: data.tripStatus, cache: { status: "valid", provider: "here", fetchedAt: data.cache.fetchedAt, expiresAt: data.cache.expiresAt, finalRoute: data.finalRoute } } } : current);
       setRefreshStatus("idle");
     } catch { console.error("Final route refresh failed."); setRefreshStatus("error"); }
   }
@@ -404,6 +406,21 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       console.error("Final route preview failed.");
       setFinalPreview({ status: "error", message: reason instanceof Error && reason.message && reason.message !== "Failed to fetch" ? reason.message : "HERE final route preview is unavailable. Your Draft is unchanged." });
     } finally { previewRequestInFlight.current = false; }
+  }
+
+  async function changeTripLifecycle(action: "start" | "complete") {
+    if (!ownedTripId || finalizationState.status !== "planned" || lifecycleActionState.status === "starting" || lifecycleActionState.status === "completing") return;
+    setLifecycleActionState({ status: action === "start" ? "starting" : "completing" });
+    try {
+      const response = await fetch(`/api/trips/${ownedTripId}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const data = await response.json() as { status?: "active" | "completed_unconfirmed"; startedAt?: string | null; endedAt?: string | null; error?: { message?: string } };
+      if (!response.ok || !data.status) throw new Error(data.error?.message);
+      setFinalizationState((current) => current.status === "planned" ? { status: "planned", result: { ...current.result, tripStatus: data.status!, startedAt: data.startedAt ?? null, endedAt: data.endedAt ?? null } } : current);
+      setLifecycleActionState({ status: "idle" });
+    } catch (reason) {
+      console.error(`Failed to ${action} trip lifecycle.`);
+      setLifecycleActionState({ status: "error", message: reason instanceof Error && reason.message ? reason.message : `The trip could not be ${action === "start" ? "started" : "ended"}.` });
+    }
   }
 
   async function editDraft(action: DraftEditAction) {
@@ -521,6 +538,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
     setFinalPreview({ status: "idle" });
     setFinalizationState({ status: "draft" });
     setRefreshStatus("idle");
+    setLifecycleActionState({ status: "idle" });
     setPreferences({
       ...DEFAULT_TRIP_PREFERENCES,
       preferredCategories: [],
@@ -606,6 +624,12 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
         refreshStatus={refreshStatus}
         onRefreshFinalRoute={() => void refreshFinalRoute()}
         creditBalance={creditBalance}
+        lifecycleActionState={lifecycleActionState}
+        onRequestStart={() => setLifecycleActionState({ status: "confirming_start" })}
+        onConfirmStart={() => void changeTripLifecycle("start")}
+        onRequestComplete={() => setLifecycleActionState({ status: "confirming_complete" })}
+        onConfirmComplete={() => void changeTripLifecycle("complete")}
+        onCancelLifecycleAction={() => setLifecycleActionState({ status: "idle" })}
       />
       {visibleDraft && finalizationState.status !== "planned" && visibleDraft.alternatives.length > 0 ? (
         <AlongTheWay

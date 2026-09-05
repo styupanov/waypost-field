@@ -21,7 +21,7 @@ export default function TripSummary({ draft, onEditTrip, finalization }: TripSum
           <h2 id="trip-summary-heading">
             {draft.origin.label} <span aria-hidden="true">→</span> {draft.destination.label}
           </h2>
-          <small>{finalization ? finalization.cache.status === "valid" ? "Planned · Final route · HERE" : "Planned · HERE route needs refresh" : "Draft · Approximate"}</small>
+          <small>{finalization ? `${finalization.tripStatus === "completed_unconfirmed" ? "Completed" : finalization.tripStatus[0].toUpperCase() + finalization.tripStatus.slice(1)} · ${finalization.cache.status === "valid" ? "Final route · HERE" : "HERE route needs refresh"}` : "Draft · Approximate"}</small>
           {draft.multiDay.isMultiDay ? <p className={styles.multiDaySummary}>{draft.multiDay.selectedDays} days · {draft.multiDay.nights} nights · {formatApproximateDuration(summary.durationSeconds)} driving</p> : null}
         </div>
         {!finalization ? <button type="button" onClick={onEditTrip}>Edit trip</button> : null}

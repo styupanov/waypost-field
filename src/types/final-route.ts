@@ -1,4 +1,5 @@
 export type RoutingWaypoint = { latitude: number; longitude: number };
+export type ExecutableTripStatus = "planned" | "active" | "completed_unconfirmed";
 
 export type FinalRoutePreview = {
   provider: "here";
@@ -16,7 +17,7 @@ export type FinalRoutePreviewState =
 export type FinalizedTripResult = {
   tripId: string;
   versionId: string;
-  tripStatus: "planned";
+  tripStatus: ExecutableTripStatus;
   versionState: "finalized";
   finalizedAt: string;
   provider: "here";
@@ -32,7 +33,9 @@ export type FinalRouteCacheState =
 export type FinalizedTripWorkspace = {
   tripId: string;
   versionId: string;
-  tripStatus: "planned";
+  tripStatus: ExecutableTripStatus;
+  startedAt: string | null;
+  endedAt: string | null;
   versionState: "finalized";
   finalizedAt: string;
   provider: "here";
@@ -44,4 +47,12 @@ export type TripFinalizationState =
   | { status: "confirming" }
   | { status: "finalizing" }
   | { status: "planned"; result: FinalizedTripWorkspace }
+  | { status: "error"; message: string };
+
+export type TripLifecycleActionState =
+  | { status: "idle" }
+  | { status: "confirming_start" }
+  | { status: "starting" }
+  | { status: "confirming_complete" }
+  | { status: "completing" }
   | { status: "error"; message: string };

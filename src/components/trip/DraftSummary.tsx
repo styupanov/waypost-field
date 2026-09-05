@@ -4,7 +4,7 @@ import RouteStops from "@/components/trip/RouteStops";
 import TripSummary from "@/components/trip/TripSummary";
 import styles from "./TripIntentPanel.module.css";
 import { isAttractionStop, isOvernightStop, type Coordinates, type DraftEditAction, type TripDraft } from "@/types/trip";
-import type { FinalRoutePreviewState, TripFinalizationState } from "@/types/final-route";
+import type { FinalRoutePreviewState, TripFinalizationState, TripLifecycleActionState } from "@/types/final-route";
 import { formatApproximateDistance, formatApproximateDuration } from "@/lib/trip/formatters";
 import { hasStaleDayPlans } from "@/lib/trip/day-plan-coherence";
 
@@ -39,6 +39,12 @@ type DraftSummaryProps = {
   refreshStatus: "idle" | "refreshing" | "error";
   onRefreshFinalRoute: () => void;
   creditBalance: number | null;
+  lifecycleActionState: TripLifecycleActionState;
+  onRequestStart: () => void;
+  onConfirmStart: () => void;
+  onRequestComplete: () => void;
+  onConfirmComplete: () => void;
+  onCancelLifecycleAction: () => void;
 };
 
 function signedDuration(seconds: number) {
@@ -82,6 +88,12 @@ export default function DraftSummary({
   refreshStatus,
   onRefreshFinalRoute,
   creditBalance,
+  lifecycleActionState,
+  onRequestStart,
+  onConfirmStart,
+  onRequestComplete,
+  onConfirmComplete,
+  onCancelLifecycleAction,
 }: DraftSummaryProps) {
   const replacementTarget = draft.stops.find(
     (stop) =>
@@ -92,8 +104,8 @@ export default function DraftSummary({
   return (
     <div className={styles.draftWorkspace}>
       <TripSummary draft={draft} onEditTrip={onEditTrip} finalization={finalizationState.status === "planned" ? finalizationState.result : null} />
-      {finalizationState.status === "planned" ? <section className={styles.finalizedNotice} aria-label="Planned trip">
-        <strong>PLANNED</strong>
+      {finalizationState.status === "planned" ? <section className={styles.finalizedNotice} aria-label="Finalized trip status">
+        <strong>{finalizationState.result.tripStatus === "planned" ? "PLANNED" : finalizationState.result.tripStatus === "active" ? "ACTIVE" : "TRIP COMPLETED"}</strong>
         {finalizationState.result.cache.status === "valid" ? <>
           <span>Final route · HERE</span>
           <small>Route refreshed {new Date(finalizationState.result.cache.fetchedAt).toLocaleDateString()} · Available until {new Date(finalizationState.result.cache.expiresAt).toLocaleDateString()}</small>
@@ -104,6 +116,23 @@ export default function DraftSummary({
           {refreshStatus === "error" ? <small role="alert">The final HERE route could not be refreshed. Your finalized trip is unchanged.</small> : null}
         </>}
         <small>Finalized {new Date(finalizationState.result.finalizedAt).toLocaleString()}</small>
+        {finalizationState.result.startedAt ? <small>Started {new Date(finalizationState.result.startedAt).toLocaleString()}</small> : null}
+        {finalizationState.result.endedAt ? <small>Ended {new Date(finalizationState.result.endedAt).toLocaleString()}</small> : null}
+        {finalizationState.result.tripStatus === "planned" ? (
+          lifecycleActionState.status === "confirming_start" ? <div role="dialog" aria-label="Start this trip?">
+            <strong>Start this trip?</strong><p>This will mark the trip as active.</p>
+            <span><button type="button" onClick={onCancelLifecycleAction}>Cancel</button><button type="button" onClick={onConfirmStart}>Start trip</button></span>
+          </div> : <button type="button" disabled={lifecycleActionState.status === "starting"} onClick={onRequestStart}>{lifecycleActionState.status === "starting" ? "Starting trip…" : "Start trip"}</button>
+        ) : null}
+        {finalizationState.result.tripStatus === "active" ? <>
+          <span>Trip in progress</span>
+          {lifecycleActionState.status === "confirming_complete" ? <div role="dialog" aria-label="End this trip?">
+            <strong>End this trip?</strong><p>We&apos;ll mark the trip as completed. You&apos;ll confirm what you actually traveled in the next step.</p>
+            <span><button type="button" onClick={onCancelLifecycleAction}>Cancel</button><button type="button" onClick={onConfirmComplete}>End trip</button></span>
+          </div> : <button type="button" disabled={lifecycleActionState.status === "completing"} onClick={onRequestComplete}>{lifecycleActionState.status === "completing" ? "Ending trip…" : "End trip"}</button>}
+        </> : null}
+        {finalizationState.result.tripStatus === "completed_unconfirmed" ? <small>Travel confirmation is still needed before this trip is added to your map.</small> : null}
+        {lifecycleActionState.status === "error" ? <small role="alert">{lifecycleActionState.message}</small> : null}
       </section> : finalPreview.status === "active" ? <section className={styles.finalPreview} aria-label="Final route preview">
         <div><strong>Final route preview</strong><small>HERE · Temporary preview</small></div>
         <dl><div><dt>Driving time</dt><dd>{formatApproximateDuration(finalPreview.result.summary.durationSeconds)}</dd></div><div><dt>Distance</dt><dd>{formatApproximateDistance(finalPreview.result.summary.distanceKm)}</dd></div></dl>
@@ -178,7 +207,7 @@ export default function DraftSummary({
         </ul>
       ) : null}
       {finalizationState.status === "planned" ? (
-        <p className={styles.draftNotice}>This trip is finalized and can&apos;t be edited.</p>
+        <p className={styles.draftNotice}>{finalizationState.result.tripStatus === "completed_unconfirmed" ? "This trip is finalized and completed; travel confirmation is still pending." : "This trip is finalized and can&apos;t be edited."}</p>
       ) : isDirty ? (
         <p className={styles.dirtyNotice} role="status">
           Trip inputs changed — rebuild route.

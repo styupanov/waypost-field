@@ -25,7 +25,7 @@ import type {
   TripPreferences,
   DrivingPace,
 } from "@/types/preferences";
-import type { FinalRoutePreviewState, TripFinalizationState } from "@/types/final-route";
+import type { FinalRoutePreviewState, TripFinalizationState, TripLifecycleActionState } from "@/types/final-route";
 
 type TripIntentPanelProps = {
   origin: TripEndpoint;
@@ -79,6 +79,12 @@ type TripIntentPanelProps = {
   refreshStatus: "idle" | "refreshing" | "error";
   onRefreshFinalRoute: () => void;
   creditBalance: number | null;
+  lifecycleActionState: TripLifecycleActionState;
+  onRequestStart: () => void;
+  onConfirmStart: () => void;
+  onRequestComplete: () => void;
+  onConfirmComplete: () => void;
+  onCancelLifecycleAction: () => void;
 };
 
 class TripBuildError extends Error {
@@ -184,6 +190,12 @@ export default function TripIntentPanel({
   refreshStatus,
   onRefreshFinalRoute,
   creditBalance,
+  lifecycleActionState,
+  onRequestStart,
+  onConfirmStart,
+  onRequestComplete,
+  onConfirmComplete,
+  onCancelLifecycleAction,
 }: TripIntentPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [isEditingTrip, setIsEditingTrip] = useState(false);
@@ -459,6 +471,12 @@ export default function TripIntentPanel({
           refreshStatus={refreshStatus}
           onRefreshFinalRoute={onRefreshFinalRoute}
           creditBalance={creditBalance}
+          lifecycleActionState={lifecycleActionState}
+          onRequestStart={onRequestStart}
+          onConfirmStart={onConfirmStart}
+          onRequestComplete={onRequestComplete}
+          onConfirmComplete={onConfirmComplete}
+          onCancelLifecycleAction={onCancelLifecycleAction}
         />
       ) : null}
       {visibleDraft && finalizationState.status !== "planned" ? (

@@ -3,7 +3,7 @@ import type { InterestCategory, TripPreferences } from "@/types/preferences";
 import type { RouteFeature, RouteSummary } from "@/types/route";
 import type { Coordinates, DraftDayPlan } from "@/types/trip";
 
-export type PersistedTripStatus = "draft" | "planned";
+export type PersistedTripStatus = "draft" | "planned" | "active" | "completed_unconfirmed";
 export type PersistedTripVersionState = "draft" | "finalized";
 export type PersistedStopType = "origin" | "destination" | "waypoint" | "attraction" | "overnight";
 export type PersistedStopSource = "user" | "waypost";
@@ -67,6 +67,8 @@ export type PersistedTrip = {
   status: PersistedTripStatus;
   currentVersionId: string | null;
   currentVersion: PersistedTripVersion | null;
+  startedAt: string | null;
+  endedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -80,6 +82,8 @@ export type TripListItem = {
   destinationLabel: string | null;
   attractionStopCount: number;
   preferences: TripPreferences | null;
+  startedAt: string | null;
+  endedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };

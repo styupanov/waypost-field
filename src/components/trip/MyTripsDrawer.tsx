@@ -8,6 +8,11 @@ function dateLabel(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(value));
 }
 
+function statusLabel(status: TripListItem["status"]) {
+  if (status === "completed_unconfirmed") return "Completed";
+  return status[0].toUpperCase() + status.slice(1);
+}
+
 export default function MyTripsDrawer({ open, currentTripId, hasClientOnlyChanges, newTripDisabled, onClose, onNewTrip }: { open: boolean; currentTripId: string | null; hasClientOnlyChanges: boolean; newTripDisabled: boolean; onClose: () => void; onNewTrip: () => void }) {
   const router = useRouter();
   const [trips, setTrips] = useState<TripListItem[] | null>(null);
@@ -35,7 +40,7 @@ export default function MyTripsDrawer({ open, currentTripId, hasClientOnlyChange
       <ul>{trips.map((trip) => <li key={trip.id} className={trip.id === currentTripId ? "current" : undefined}>
         <button onClick={() => { onClose(); router.push(`/?trip=${trip.id}`); }}>
           <strong>{trip.originLabel ?? "Unknown origin"} → {trip.destinationLabel ?? "Unknown destination"}</strong>
-          <span>{trip.status === "planned" ? "Planned" : "Draft"} · {trip.preferences?.selectedTripDays ?? 1} day{(trip.preferences?.selectedTripDays ?? 1) === 1 ? "" : "s"} · {trip.attractionStopCount} attraction{trip.attractionStopCount === 1 ? "" : "s"}</span>
+          <span>{statusLabel(trip.status)} · {trip.preferences?.selectedTripDays ?? 1} day{(trip.preferences?.selectedTripDays ?? 1) === 1 ? "" : "s"} · {trip.attractionStopCount} attraction{trip.attractionStopCount === 1 ? "" : "s"}</span>
           <small>Updated {dateLabel(trip.updatedAt)}{trip.id === currentTripId ? " · Open" : ""}</small>
         </button>
       </li>)}</ul>}

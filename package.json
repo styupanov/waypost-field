@@ -23,6 +23,8 @@
     "test:route-coverage": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-route-coverage.ts",
     "test:coverage-map": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-coverage-map.ts",
     "test:display-route": "node --experimental-strip-types scripts/verify-display-route.ts",
+    "test:fog-mask": "node --experimental-strip-types scripts/verify-fog-mask.ts",
+    "diagnose:fog-mask": "node --experimental-strip-types --env-file=.env.local scripts/diagnose-fog-mask.ts",
     "compare:routes": "node --experimental-strip-types --env-file=.env.local scripts/compare-route-geometries.ts",
     "calibrate:h3-route": "node --experimental-strip-types --env-file=.env.local scripts/calibrate-h3-route.ts",
     "db:smoke-finalization": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/smoke-finalization.ts",
@@ -34,6 +36,7 @@
     "next": "16.3.4",
     "next-auth": "^5.0.0-beta.32",
     "pg": "^8.23.0",
+    "polygon-clipping": "^0.15.7",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

@@ -14,6 +14,7 @@ import type {
 import type { TripAlternative } from "@/types/trip";
 import type { PersonalCoverageResponse } from "@/types/coverage";
 import { coverageCellsToGeoJSON } from "@/lib/coverage/coverage-geojson";
+import { buildFogMask, padCoverageViewport, type FogMaskFeature } from "@/lib/coverage/fog-mask";
 
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
@@ -44,9 +45,14 @@ const ROUTE_LAYER_ID = "route-line";
 const COVERAGE_SOURCE_ID = "waypost-personal-coverage";
 const COVERAGE_FILL_LAYER_ID = "waypost-personal-coverage-fill";
 const COVERAGE_OUTLINE_LAYER_ID = "waypost-personal-coverage-outline";
+const FOG_SOURCE_ID = "waypost-personal-fog";
+const FOG_FILL_LAYER_ID = "waypost-personal-fog-fill";
+const FOG_FILL_COLOR = "#17201d";
+const FOG_FILL_OPACITY = 0.48;
 const EMPTY_COVERAGE = coverageCellsToGeoJSON([]);
+const EMPTY_FOG: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
 
-function renderPersonalCoverage(map: maplibregl.Map, cells: string[]) {
+function renderPersonalCoverage(map: maplibregl.Map, cells: string[], fog: FogMaskFeature) {
   const data = coverageCellsToGeoJSON(cells);
   const source = map.getSource(COVERAGE_SOURCE_ID);
   if (source) (source as maplibregl.GeoJSONSource).setData(data);
@@ -59,6 +65,13 @@ function renderPersonalCoverage(map: maplibregl.Map, cells: string[]) {
   if (!map.getLayer(COVERAGE_OUTLINE_LAYER_ID)) map.addLayer({
     id: COVERAGE_OUTLINE_LAYER_ID, type: "line", source: COVERAGE_SOURCE_ID,
     paint: { "line-color": "#315f4b", "line-width": 0.7, "line-opacity": 0.42 },
+  }, beforeRoute);
+  const fogSource = map.getSource(FOG_SOURCE_ID);
+  if (fogSource) (fogSource as maplibregl.GeoJSONSource).setData(fog);
+  else map.addSource(FOG_SOURCE_ID, { type: "geojson", data: fog });
+  if (!map.getLayer(FOG_FILL_LAYER_ID)) map.addLayer({
+    id: FOG_FILL_LAYER_ID, type: "fill", source: FOG_SOURCE_ID,
+    paint: { "fill-color": FOG_FILL_COLOR, "fill-opacity": FOG_FILL_OPACITY },
   }, beforeRoute);
 }
 
@@ -266,6 +279,8 @@ export default function MapCanvas({
     if (!personalCoverageEnabled) {
       const source = mapInstance.getSource(COVERAGE_SOURCE_ID);
       if (source) (source as maplibregl.GeoJSONSource).setData(EMPTY_COVERAGE);
+      const fogSource = mapInstance.getSource(FOG_SOURCE_ID);
+      if (fogSource) (fogSource as maplibregl.GeoJSONSource).setData(EMPTY_FOG);
       return;
     }
     let controller: AbortController | null = null;
@@ -274,16 +289,22 @@ export default function MapCanvas({
       controller?.abort();
       controller = new AbortController();
       const requestSequence = ++coverageRequestSequence.current;
-      const bounds = mapInstance.getBounds();
+      const mapBounds = mapInstance.getBounds();
+      const bounds = padCoverageViewport({
+        west: mapBounds.getWest(), south: mapBounds.getSouth(),
+        east: mapBounds.getEast(), north: mapBounds.getNorth(),
+      });
       const params = new URLSearchParams({
-        zoom: String(mapInstance.getZoom()), west: String(bounds.getWest()), south: String(bounds.getSouth()),
-        east: String(bounds.getEast()), north: String(bounds.getNorth()),
+        zoom: String(mapInstance.getZoom()), west: String(bounds.west), south: String(bounds.south),
+        east: String(bounds.east), north: String(bounds.north),
       });
       try {
         const response = await fetch(`/api/map/coverage?${params}`, { signal: controller.signal });
         if (!response.ok) return;
         const coverage = await response.json() as PersonalCoverageResponse;
-        if (!disposed && requestSequence === coverageRequestSequence.current) renderPersonalCoverage(mapInstance, coverage.cells);
+        if (!disposed && requestSequence === coverageRequestSequence.current) {
+          renderPersonalCoverage(mapInstance, coverage.cells, buildFogMask({ bounds, revealedCells: coverage.cells }));
+        }
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) console.error("Personal coverage could not be refreshed.");
       }

@@ -28,7 +28,7 @@ import {
 } from "@/types/preferences";
 import { calculateTripDayRecommendation } from "@/lib/trip/multi-day";
 import { resolveDisplayedTripRoute } from "@/lib/trip/display-route";
-import { initialWorkspaceMode, showsTripWorkspace, type WorkspaceMode } from "@/lib/trip/workspace-mode";
+import { isCurrentWorkspace, resolveWorkspaceMode, showsTripWorkspace, workspaceUrl, type WorkspaceDestination } from "@/lib/trip/workspace-mode";
 import type { PersonalCoverageBoundsResponse } from "@/types/coverage";
 import type { FinalRoutePreview, FinalRoutePreviewState, FinalizedTripResult, FinalizedTripWorkspace, TripFinalizationState, TripLifecycleActionState, TravelConfirmationActionState } from "@/types/final-route";
 
@@ -52,9 +52,8 @@ function coordinateLabel(coordinates: Coordinates) {
 
 type PlannerSession = { email?: string | null; name?: string | null } | null;
 
-export default function TripPlanner({ initialSession, requestedTripId }: { initialSession: PlannerSession; requestedTripId: string | null }) {
+export default function TripPlanner({ initialSession, requestedTripId, requestedMode }: { initialSession: PlannerSession; requestedTripId: string | null; requestedMode: string | null }) {
   const router = useRouter();
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => initialWorkspaceMode(Boolean(initialSession), requestedTripId));
   const [plannerState, setPlannerState] = useState<PlannerState>({
     status: "trip_intent",
   });
@@ -80,6 +79,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
   const [findingAlternatives, setFindingAlternatives] = useState(false);
   const editRequestInFlight = useRef(false);
   const previewRequestInFlight = useRef(false);
+  const tripLoadSequence = useRef(0);
   const [finalPreview, setFinalPreview] = useState<FinalRoutePreviewState>({ status: "idle" });
   const [finalizationState, setFinalizationState] = useState<TripFinalizationState>({ status: "draft" });
   const [refreshStatus, setRefreshStatus] = useState<"idle" | "refreshing" | "error">("idle");
@@ -91,11 +91,13 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
     initialSession && !requestedTripId ? "loading" : "idle"
   );
   const [personalCoverageBounds, setPersonalCoverageBounds] = useState<PersonalCoverageBoundsResponse["bounds"]>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<WorkspaceDestination | null>(null);
   const [preferences, setPreferences] = useState<TripPreferences>(() => ({
     ...DEFAULT_TRIP_PREFERENCES,
     preferredCategories: [],
     excludedCategories: [],
   }));
+  const workspaceMode = resolveWorkspaceMode({ authenticated: Boolean(sessionUser), requestedTripId, requestedMode });
 
   useEffect(() => {
     if (!sessionUser) return;
@@ -124,14 +126,14 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
     if (!requestedTripId || !sessionUser) {
       return;
     }
+    const requestSequence = ++tripLoadSequence.current;
     let cancelled = false;
     void (async () => {
       const response = await fetch(`/api/trips/${requestedTripId}`);
       if (!response.ok) { if (!cancelled) setSavedTripState(response.status === 404 ? "forbidden" : "error"); return; }
       const data = await response.json() as { tripId: string; draft: TripDraft; finalization: FinalizedTripWorkspace | null };
-      if (cancelled) return;
+      if (cancelled || requestSequence !== tripLoadSequence.current) return;
       const draft = data.draft;
-      setWorkspaceMode("trip");
       setOwnedTripId(data.tripId); setOwnershipStatus("saved"); setSavedTripState("idle");
       setPlannerState({ status: "draft_ready", draft, isDirty: false }); setPreferences(draft.preferences);
       setActiveNightIndex(null); setMapFocusCoordinates(null);
@@ -542,7 +544,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
     if (!response.ok) { setOwnershipStatus("error"); throw new Error("Trip save failed"); }
     const data = await response.json() as { tripId: string };
     setOwnedTripId(data.tripId); setOwnershipStatus("saved"); setAuthPurpose(null);
-    window.history.replaceState(null, "", `/?trip=${data.tripId}`);
+    router.replace(workspaceUrl({ mode: "trip", tripId: data.tripId }));
   }
 
   function requestSave() {
@@ -598,19 +600,37 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
   }
 
   function startNewTrip() {
-    clearTripContext();
-    setWorkspaceMode("planner");
-    router.replace("/");
+    requestWorkspaceNavigation({ mode: "planner" });
   }
 
   function enterPersonalMap() {
-    if (plannerState.status === "generating_draft") return;
-    if (visibleDraft && ownershipStatus === "unsaved" && !window.confirm("Open My Map? Changes that haven't been rebuilt will be discarded.")) return;
+    requestWorkspaceNavigation({ mode: "personal_map" });
+  }
+
+  function performWorkspaceNavigation(target: WorkspaceDestination) {
+    tripLoadSequence.current += 1;
     clearTripContext();
-    setPersonalMapCoverageState("loading");
-    setPersonalCoverageBounds(null);
-    setWorkspaceMode("personal_map");
-    router.replace("/");
+    if (target.mode === "personal_map") {
+      setPersonalMapCoverageState("loading");
+      setPersonalCoverageBounds(null);
+    } else if (target.mode === "trip" && target.tripId) {
+      setSavedTripState("loading");
+    }
+    router.push(workspaceUrl(target));
+  }
+
+  function requestWorkspaceNavigation(target: WorkspaceDestination) {
+    if (plannerState.status === "generating_draft") return;
+    const alreadyThere = isCurrentWorkspace(target, workspaceMode, requestedTripId);
+    if (alreadyThere) {
+      setIsMyTripsOpen(false);
+      return;
+    }
+    if (visibleDraft && ownershipStatus === "unsaved") {
+      setPendingNavigation(target);
+      return;
+    }
+    performWorkspaceNavigation(target);
   }
 
   const tripWorkspaceVisible = showsTripWorkspace(workspaceMode);
@@ -752,15 +772,20 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       <MyTripsDrawer
         open={isMyTripsOpen && Boolean(sessionUser)}
         currentTripId={ownedTripId ?? requestedTripId}
-        hasClientOnlyChanges={Boolean(visibleDraft) && ownershipStatus === "unsaved"}
         newTripDisabled={plannerState.status === "generating_draft"}
         onClose={() => setIsMyTripsOpen(false)}
         onNewTrip={startNewTrip}
+        onTripSelect={(tripId) => requestWorkspaceNavigation({ mode: "trip", tripId })}
       />
+      {pendingNavigation ? <div className="load-gate"><div className="workspace-leave-confirmation" role="dialog" aria-label="Leave this workspace?">
+        <strong>Leave this workspace?</strong>
+        <p>Changes that haven&apos;t been rebuilt will be discarded.</p>
+        <div><button type="button" onClick={() => setPendingNavigation(null)}>Cancel</button><button type="button" onClick={() => { const target = pendingNavigation; setPendingNavigation(null); performWorkspaceNavigation(target); }}>Continue</button></div>
+      </div></div> : null}
       {authPurpose ? <LocalSignInDialog onCancel={() => setAuthPurpose(null)} onAuthenticated={async () => { const purpose = authPurpose; const session = await getSession(); setSessionUser(session?.user ?? null); setAuthPurpose(null); if (purpose === "save") await persistCurrentDraft(); else if (purpose === "trips") setIsMyTripsOpen(true); }} /> : null}
       {savedTripState === "loading" ? <div className="load-gate">Loading saved trip…</div> : null}
-      {savedTripState === "forbidden" ? <div className="load-gate"><div><p>{sessionUser ? "You don't have access to this saved trip." : "Sign in to open this saved trip."}</p>{!sessionUser ? <button onClick={() => setAuthPurpose("open-trip")}>Sign in</button> : null}</div></div> : null}
-      {savedTripState === "error" ? <div className="load-gate">The saved trip could not be loaded.</div> : null}
+      {savedTripState === "forbidden" ? <div className="load-gate"><div><p>{sessionUser ? "You don't have access to this saved trip." : "Sign in to open this saved trip."}</p>{!sessionUser ? <button onClick={() => setAuthPurpose("open-trip")}>Sign in</button> : <button onClick={enterPersonalMap}>Back to My Map</button>}</div></div> : null}
+      {savedTripState === "error" ? <div className="load-gate"><div><p>The saved trip could not be loaded.</p>{sessionUser ? <button onClick={enterPersonalMap}>Back to My Map</button> : null}</div></div> : null}
     </>
   );
 }

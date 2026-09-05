@@ -3,15 +3,15 @@ import { randomUUID } from "node:crypto";
 import { coverageBoundsResponseForUser } from "../src/lib/coverage/coverage-bounds-response.ts";
 import { PERSONAL_MAP_COVERAGE_STYLE, TRIP_COVERAGE_STYLE, coverageStyleForMode } from "../src/lib/coverage/coverage-style.ts";
 import { getPostgresPool } from "../src/lib/db/postgres.ts";
-import { initialWorkspaceMode, showsTripWorkspace } from "../src/lib/trip/workspace-mode.ts";
+import { resolveWorkspaceMode, showsTripWorkspace } from "../src/lib/trip/workspace-mode.ts";
 
 const pool = getPostgresPool();
 const denverTripId = "e7fb94f7-c9eb-4ef6-bfed-ef36ec76b68b";
 
 try {
-  assert.equal(initialWorkspaceMode(true, null), "personal_map");
-  assert.equal(initialWorkspaceMode(false, null), "planner");
-  assert.equal(initialWorkspaceMode(true, denverTripId), "trip");
+  assert.equal(resolveWorkspaceMode({ authenticated: true, requestedTripId: null, requestedMode: null }), "personal_map");
+  assert.equal(resolveWorkspaceMode({ authenticated: false, requestedTripId: null, requestedMode: null }), "planner");
+  assert.equal(resolveWorkspaceMode({ authenticated: true, requestedTripId: denverTripId, requestedMode: null }), "trip");
   assert.equal(showsTripWorkspace("personal_map"), false);
   assert.equal(showsTripWorkspace("trip"), true);
   assert.equal(showsTripWorkspace("planner"), true);

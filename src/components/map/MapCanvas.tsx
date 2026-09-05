@@ -15,6 +15,8 @@ import type { TripAlternative } from "@/types/trip";
 import type { PersonalCoverageResponse } from "@/types/coverage";
 import { coverageCellsToGeoJSON } from "@/lib/coverage/coverage-geojson";
 import { buildFogMask, padCoverageViewport, type FogMaskFeature } from "@/lib/coverage/fog-mask";
+import type { CoverageViewport } from "@/types/coverage";
+import { coverageStyleForMode } from "@/lib/coverage/coverage-style";
 
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
@@ -34,6 +36,9 @@ type MapCanvasProps = {
   isReplacing: boolean;
   personalCoverageEnabled: boolean;
   coverageRevision: number;
+  personalMapMode: boolean;
+  personalCoverageBounds: CoverageViewport | null;
+  personalMapCameraReady: boolean;
   onMapPointSelected: (field: TripField, coordinates: Coordinates) => void;
   onPoiHover: (attractionId: number | null) => void;
   onPoiSelect: (attractionId: number) => void;
@@ -51,8 +56,10 @@ const FOG_FILL_COLOR = "#17201d";
 const FOG_FILL_OPACITY = 0.48;
 const EMPTY_COVERAGE = coverageCellsToGeoJSON([]);
 const EMPTY_FOG: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
+const EMPTY_ROUTE: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
 
-function renderPersonalCoverage(map: maplibregl.Map, cells: string[], fog: FogMaskFeature) {
+function renderPersonalCoverage(map: maplibregl.Map, cells: string[], fog: FogMaskFeature, personalMapMode: boolean) {
+  const coverageStyle = coverageStyleForMode(personalMapMode);
   const data = coverageCellsToGeoJSON(cells);
   const source = map.getSource(COVERAGE_SOURCE_ID);
   if (source) (source as maplibregl.GeoJSONSource).setData(data);
@@ -60,11 +67,11 @@ function renderPersonalCoverage(map: maplibregl.Map, cells: string[], fog: FogMa
   const beforeRoute = map.getLayer(ROUTE_LAYER_ID) ? ROUTE_LAYER_ID : undefined;
   if (!map.getLayer(COVERAGE_FILL_LAYER_ID)) map.addLayer({
     id: COVERAGE_FILL_LAYER_ID, type: "fill", source: COVERAGE_SOURCE_ID,
-    paint: { "fill-color": "#5f8f78", "fill-opacity": 0.2 },
+    paint: { "fill-color": "#5f8f78", "fill-opacity": coverageStyle.fillOpacity },
   }, beforeRoute);
   if (!map.getLayer(COVERAGE_OUTLINE_LAYER_ID)) map.addLayer({
     id: COVERAGE_OUTLINE_LAYER_ID, type: "line", source: COVERAGE_SOURCE_ID,
-    paint: { "line-color": "#315f4b", "line-width": 0.7, "line-opacity": 0.42 },
+    paint: { "line-color": "#315f4b", "line-width": 0.7, "line-opacity": coverageStyle.outlineOpacity },
   }, beforeRoute);
   const fogSource = map.getSource(FOG_SOURCE_ID);
   if (fogSource) (fogSource as maplibregl.GeoJSONSource).setData(fog);
@@ -205,6 +212,9 @@ export default function MapCanvas({
   isReplacing,
   personalCoverageEnabled,
   coverageRevision,
+  personalMapMode,
+  personalCoverageBounds,
+  personalMapCameraReady,
   onMapPointSelected,
   onPoiHover,
   onPoiSelect,
@@ -303,7 +313,7 @@ export default function MapCanvas({
         if (!response.ok) return;
         const coverage = await response.json() as PersonalCoverageResponse;
         if (!disposed && requestSequence === coverageRequestSequence.current) {
-          renderPersonalCoverage(mapInstance, coverage.cells, buildFogMask({ bounds, revealedCells: coverage.cells }));
+          renderPersonalCoverage(mapInstance, coverage.cells, buildFogMask({ bounds, revealedCells: coverage.cells }), personalMapMode);
         }
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) console.error("Personal coverage could not be refreshed.");
@@ -319,14 +329,52 @@ export default function MapCanvas({
       mapInstance.off("moveend", handleMoveEnd);
       mapInstance.off("load", handleLoad);
     };
-  }, [personalCoverageEnabled, coverageRevision]);
+  }, [personalCoverageEnabled, coverageRevision, personalMapMode]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+    if (!mapInstance) return;
+    const coverageStyle = coverageStyleForMode(personalMapMode);
+    if (mapInstance.getLayer(COVERAGE_FILL_LAYER_ID)) mapInstance.setPaintProperty(
+      COVERAGE_FILL_LAYER_ID,
+      "fill-opacity",
+      coverageStyle.fillOpacity
+    );
+    if (mapInstance.getLayer(COVERAGE_OUTLINE_LAYER_ID)) mapInstance.setPaintProperty(
+      COVERAGE_OUTLINE_LAYER_ID,
+      "line-opacity",
+      coverageStyle.outlineOpacity
+    );
+  }, [personalMapMode]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+    if (!mapInstance || !personalMapMode || !personalMapCameraReady) return;
+    if (personalCoverageBounds) {
+      mapInstance.fitBounds(
+        [[personalCoverageBounds.west, personalCoverageBounds.south], [personalCoverageBounds.east, personalCoverageBounds.north]],
+        { padding: 80, duration: 800, maxZoom: 8 }
+      );
+    } else {
+      mapInstance.easeTo({ center: [-98.5, 39.5], zoom: 3.5, duration: 800 });
+    }
+  }, [personalCoverageBounds, personalMapCameraReady, personalMapMode]);
 
   useEffect(() => {
     const mapInstance = map.current;
 
-    if (!mapInstance || !route) {
+    if (!mapInstance) {
       return;
     }
+
+    if (!route) {
+      const routeSource = mapInstance.getSource(ROUTE_SOURCE_ID);
+      if (routeSource) (routeSource as maplibregl.GeoJSONSource).setData(EMPTY_ROUTE);
+      if (mapInstance.getLayer(ROUTE_LAYER_ID)) mapInstance.setLayoutProperty(ROUTE_LAYER_ID, "visibility", "none");
+      return;
+    }
+
+    if (mapInstance.getLayer(ROUTE_LAYER_ID)) mapInstance.setLayoutProperty(ROUTE_LAYER_ID, "visibility", "visible");
 
     if (mapInstance.isStyleLoaded()) {
       renderRoute(mapInstance, route);

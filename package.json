@@ -24,6 +24,7 @@
     "test:coverage-map": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-coverage-map.ts",
     "test:display-route": "node --experimental-strip-types scripts/verify-display-route.ts",
     "test:fog-mask": "node --experimental-strip-types scripts/verify-fog-mask.ts",
+    "test:personal-map": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-personal-map.ts",
     "diagnose:fog-mask": "node --experimental-strip-types --env-file=.env.local scripts/diagnose-fog-mask.ts",
     "compare:routes": "node --experimental-strip-types --env-file=.env.local scripts/compare-route-geometries.ts",
     "calibrate:h3-route": "node --experimental-strip-types --env-file=.env.local scripts/calibrate-h3-route.ts",

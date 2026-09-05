@@ -28,6 +28,8 @@ import {
 } from "@/types/preferences";
 import { calculateTripDayRecommendation } from "@/lib/trip/multi-day";
 import { resolveDisplayedTripRoute } from "@/lib/trip/display-route";
+import { initialWorkspaceMode, showsTripWorkspace, type WorkspaceMode } from "@/lib/trip/workspace-mode";
+import type { PersonalCoverageBoundsResponse } from "@/types/coverage";
 import type { FinalRoutePreview, FinalRoutePreviewState, FinalizedTripResult, FinalizedTripWorkspace, TripFinalizationState, TripLifecycleActionState, TravelConfirmationActionState } from "@/types/final-route";
 
 const initialOrigin: TripEndpoint = {
@@ -52,6 +54,7 @@ type PlannerSession = { email?: string | null; name?: string | null } | null;
 
 export default function TripPlanner({ initialSession, requestedTripId }: { initialSession: PlannerSession; requestedTripId: string | null }) {
   const router = useRouter();
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => initialWorkspaceMode(Boolean(initialSession), requestedTripId));
   const [plannerState, setPlannerState] = useState<PlannerState>({
     status: "trip_intent",
   });
@@ -84,6 +87,10 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
   const [lifecycleActionState, setLifecycleActionState] = useState<TripLifecycleActionState>({ status: "idle" });
   const [travelConfirmationState, setTravelConfirmationState] = useState<TravelConfirmationActionState>({ status: "idle" });
   const [coverageRevision, setCoverageRevision] = useState(0);
+  const [personalMapCoverageState, setPersonalMapCoverageState] = useState<"idle" | "loading" | "available" | "empty" | "error">(
+    initialSession && !requestedTripId ? "loading" : "idle"
+  );
+  const [personalCoverageBounds, setPersonalCoverageBounds] = useState<PersonalCoverageBoundsResponse["bounds"]>(null);
   const [preferences, setPreferences] = useState<TripPreferences>(() => ({
     ...DEFAULT_TRIP_PREFERENCES,
     preferredCategories: [],
@@ -98,6 +105,22 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
   }, [sessionUser]);
 
   useEffect(() => {
+    if (!sessionUser || workspaceMode !== "personal_map") return;
+    let cancelled = false;
+    void fetch("/api/map/coverage/bounds").then(async (response) => {
+      if (!response.ok) throw new Error("bounds");
+      return response.json() as Promise<PersonalCoverageBoundsResponse>;
+    }).then((data) => {
+      if (cancelled) return;
+      setPersonalCoverageBounds(data.bounds);
+      setPersonalMapCoverageState(data.hasCoverage ? "available" : "empty");
+    }).catch(() => {
+      if (!cancelled) setPersonalMapCoverageState("error");
+    });
+    return () => { cancelled = true; };
+  }, [sessionUser, workspaceMode]);
+
+  useEffect(() => {
     if (!requestedTripId || !sessionUser) {
       return;
     }
@@ -108,6 +131,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       const data = await response.json() as { tripId: string; draft: TripDraft; finalization: FinalizedTripWorkspace | null };
       if (cancelled) return;
       const draft = data.draft;
+      setWorkspaceMode("trip");
       setOwnedTripId(data.tripId); setOwnershipStatus("saved"); setSavedTripState("idle");
       setPlannerState({ status: "draft_ready", draft, isDirty: false }); setPreferences(draft.preferences);
       setActiveNightIndex(null); setMapFocusCoordinates(null);
@@ -543,7 +567,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
     }
   }
 
-  function startNewTrip() {
+  function clearTripContext() {
     setPlannerState({ status: "trip_intent" });
     setOrigin({ ...initialOrigin });
     setStop(null);
@@ -571,35 +595,55 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       excludedCategories: [],
     });
     setIsMyTripsOpen(false);
+  }
+
+  function startNewTrip() {
+    clearTripContext();
+    setWorkspaceMode("planner");
     router.replace("/");
   }
+
+  function enterPersonalMap() {
+    if (plannerState.status === "generating_draft") return;
+    if (visibleDraft && ownershipStatus === "unsaved" && !window.confirm("Open My Map? Changes that haven't been rebuilt will be discarded.")) return;
+    clearTripContext();
+    setPersonalMapCoverageState("loading");
+    setPersonalCoverageBounds(null);
+    setWorkspaceMode("personal_map");
+    router.replace("/");
+  }
+
+  const tripWorkspaceVisible = showsTripWorkspace(workspaceMode);
 
   return (
     <>
       <MapCanvas
-        route={displayedRoute}
+        route={tripWorkspaceVisible ? displayedRoute : null}
         attractionStops={
-          visibleDraft?.stops.filter(isAttractionStop) ?? []
+          tripWorkspaceVisible ? visibleDraft?.stops.filter(isAttractionStop) ?? [] : []
         }
-        overnightStops={visibleDraft?.stops.filter(isOvernightStop) ?? []}
-        alternatives={visibleDraft?.alternatives ?? []}
-        originCoordinates={origin.coordinates}
-        stopCoordinates={stop?.coordinates ?? null}
-        destinationCoordinates={destination.coordinates}
-        pickingMode={pickingMode}
-        activePoiId={activePoiId}
-        activeNightIndex={activeNightIndex}
-        focusCoordinates={mapFocusCoordinates}
+        overnightStops={tripWorkspaceVisible ? visibleDraft?.stops.filter(isOvernightStop) ?? [] : []}
+        alternatives={tripWorkspaceVisible ? visibleDraft?.alternatives ?? [] : []}
+        originCoordinates={tripWorkspaceVisible ? origin.coordinates : null}
+        stopCoordinates={tripWorkspaceVisible ? stop?.coordinates ?? null : null}
+        destinationCoordinates={tripWorkspaceVisible ? destination.coordinates : null}
+        pickingMode={tripWorkspaceVisible ? pickingMode : null}
+        activePoiId={tripWorkspaceVisible ? activePoiId : null}
+        activeNightIndex={tripWorkspaceVisible ? activeNightIndex : null}
+        focusCoordinates={tripWorkspaceVisible ? mapFocusCoordinates : null}
         hoveredPoiId={hoveredPoiId}
         isReplacing={replacementTargetId !== null}
         personalCoverageEnabled={Boolean(sessionUser)}
         coverageRevision={coverageRevision}
+        personalMapMode={workspaceMode === "personal_map"}
+        personalCoverageBounds={personalCoverageBounds}
+        personalMapCameraReady={personalMapCoverageState === "available" || personalMapCoverageState === "empty"}
         onMapPointSelected={selectMapPoint}
         onPoiHover={setHoveredPoiId}
         onPoiSelect={selectPoi}
         onOvernightSelect={(nightIndex) => { setActivePoiId(null); setActiveNightIndex(nightIndex); }}
       />
-      <TripIntentPanel
+      {tripWorkspaceVisible ? <TripIntentPanel
         origin={origin}
         stop={stop}
         destination={destination}
@@ -664,8 +708,8 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
         onRequestUndoTravelConfirmation={() => setTravelConfirmationState({ status: "confirming_undo" })}
         onConfirmUndoTravelConfirmation={() => void updateTravelConfirmation("undo")}
         onCancelTravelConfirmation={() => setTravelConfirmationState({ status: "idle" })}
-      />
-      {visibleDraft && finalizationState.status !== "planned" && visibleDraft.alternatives.length > 0 ? (
+      /> : null}
+      {tripWorkspaceVisible && visibleDraft && finalizationState.status !== "planned" && visibleDraft.alternatives.length > 0 ? (
         <AlongTheWay
           alternatives={visibleDraft.alternatives}
           activePoiId={activePoiId}
@@ -694,8 +738,14 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
           onCancelReplacement={() => setReplacementTargetId(null)}
         />
       ) : null}
-      {findingAlternatives ? <div className="finding-places" role="status">Finding places along the way…</div> : null}
+      {tripWorkspaceVisible && findingAlternatives ? <div className="finding-places" role="status">Finding places along the way…</div> : null}
+      {workspaceMode === "personal_map" ? <section className="personal-map-chrome" aria-label="Personal Map">
+        <strong>My Map</strong>
+        <small>{personalMapCoverageState === "empty" ? "Your map will open up as you travel." : "Your traveled territory"}</small>
+        <button type="button" onClick={startNewTrip}>New trip</button>
+      </section> : null}
       <div className="account-control">
+        {sessionUser && workspaceMode !== "personal_map" ? <button onClick={enterPersonalMap}>My Map</button> : null}
         <button onClick={() => { if (sessionUser) setIsMyTripsOpen(true); else setAuthPurpose("trips"); }}>My Trips</button>
         {sessionUser ? <><span>{sessionUser.name || sessionUser.email}</span><button onClick={() => void signOut({ redirectTo: ownedTripId ? `/?trip=${ownedTripId}` : "/" })}>Sign out</button></> : null}
       </div>

@@ -14,3 +14,7 @@ export type PersonalCoverageResponse = {
   returnedCellCount: number;
   cells: string[];
 };
+
+export type PersonalCoverageBoundsResponse =
+  | { hasCoverage: false; bounds: null }
+  | { hasCoverage: true; bounds: CoverageViewport };

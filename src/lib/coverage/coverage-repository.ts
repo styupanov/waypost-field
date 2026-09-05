@@ -1,5 +1,7 @@
 import "server-only";
 import { getPostgresPool } from "../db/postgres.ts";
+import { cellToBoundary } from "h3-js";
+import type { PersonalCoverageBoundsResponse } from "../../types/coverage.ts";
 
 export async function loadPersonalBaseCoverageCells(userId: string) {
   const result = await getPostgresPool().query<{ h3_index: string }>(
@@ -13,4 +15,21 @@ export async function loadPersonalBaseCoverageCells(userId: string) {
     [userId]
   );
   return result.rows.map((row) => row.h3_index);
+}
+
+export async function loadPersonalCoverageBounds(userId: string): Promise<PersonalCoverageBoundsResponse> {
+  const cells = await loadPersonalBaseCoverageCells(userId);
+  if (!cells.length) return { hasCoverage: false, bounds: null };
+
+  let west = 180;
+  let south = 90;
+  let east = -180;
+  let north = -90;
+  for (const cell of cells) for (const [longitude, latitude] of cellToBoundary(cell, true)) {
+    west = Math.min(west, longitude);
+    south = Math.min(south, latitude);
+    east = Math.max(east, longitude);
+    north = Math.max(north, latitude);
+  }
+  return { hasCoverage: true, bounds: { west, south, east, north } };
 }

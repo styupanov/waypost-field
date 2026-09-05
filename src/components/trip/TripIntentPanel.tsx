@@ -52,11 +52,14 @@ type TripIntentPanelProps = {
   onDrivingPaceChange: (value: DrivingPace) => void;
   onTripDaysChange: (days: number) => void;
   activePoiId: number | null;
+  activeNightIndex: number | null;
   hoveredPoiId: number | null;
   replacementTargetId: number | null;
   editError: string | null;
   onPoiHover: (attractionId: number | null) => void;
   onPoiSelect: (attractionId: number) => void;
+  onOvernightSelect: (nightIndex: number) => void;
+  onDayFocus: (coordinates: Coordinates[]) => void;
   onStartReplacement: (attractionId: number) => void;
   onCancelReplacement: () => void;
   onEditDraft: (action: DraftEditAction) => void;
@@ -144,11 +147,14 @@ export default function TripIntentPanel({
   onDrivingPaceChange,
   onTripDaysChange,
   activePoiId,
+  activeNightIndex,
   hoveredPoiId,
   replacementTargetId,
   editError,
   onPoiHover,
   onPoiSelect,
+  onOvernightSelect,
+  onDayFocus,
   onStartReplacement,
   onCancelReplacement,
   onEditDraft,
@@ -406,11 +412,14 @@ export default function TripIntentPanel({
           isDirty={visibleDraftIsDirty}
           isEditing={isGenerating}
           activePoiId={activePoiId}
+          activeNightIndex={activeNightIndex}
           hoveredPoiId={hoveredPoiId}
           replacementTargetId={replacementTargetId}
           editError={editError}
           onPoiHover={onPoiHover}
           onPoiSelect={onPoiSelect}
+          onOvernightSelect={onOvernightSelect}
+          onDayFocus={onDayFocus}
           onStartReplacement={onStartReplacement}
           onCancelReplacement={onCancelReplacement}
           onEdit={onEditDraft}

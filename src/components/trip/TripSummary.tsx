@@ -19,6 +19,7 @@ export default function TripSummary({ draft, onEditTrip }: TripSummaryProps) {
             {draft.origin.label} <span aria-hidden="true">→</span> {draft.destination.label}
           </h2>
           <small>Draft · Approximate</small>
+          {draft.multiDay.isMultiDay ? <p className={styles.multiDaySummary}>{draft.multiDay.selectedDays} days · {draft.multiDay.nights} nights · {formatApproximateDuration(draft.summary.durationSeconds)} driving</p> : null}
         </div>
         <button type="button" onClick={onEditTrip}>Edit trip</button>
       </div>

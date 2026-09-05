@@ -827,3 +827,48 @@
   color: #b45309;
   font-weight: 650;
 }
+
+.multiDaySummary {
+  margin: 5px 0 0;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.dayItinerary { display: grid; gap: 9px; }
+.dayItinerary > h3 { margin-bottom: 1px; }
+.daySection { overflow: hidden; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+.dayActive { border-color: #5eead4; box-shadow: 0 0 0 1px #99f6e4; }
+.panel .dayHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 9px;
+  border-radius: 0;
+  background: #f8fafc;
+  color: #334155;
+  text-align: left;
+}
+.dayHeader span { min-width: 0; }
+.dayHeader span:nth-child(2) { text-align: right; }
+.dayHeader strong, .dayHeader small { display: block; }
+.dayHeader strong { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.dayHeader small { overflow: hidden; color: #64748b; font-size: 9px; font-weight: 500; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.daySection > ol { padding: 5px 3px 1px; }
+.overnightStop { background: #f0fdfa; }
+.overnightActive { box-shadow: inset 0 0 0 1px #5eead4; }
+.emptyDay { min-height: 34px !important; color: #94a3b8; }
+.emptyDay small { align-self: center; color: #64748b; font-size: 10px; }
+.overnightChoices { grid-column: 1 / -1; display: grid !important; gap: 6px; margin: 7px 0 0 !important; padding: 7px 0 0 !important; border-top: 1px solid #99f6e4; list-style: none; }
+.overnightChoices li { display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important; gap: 6px; min-height: 0 !important; padding: 4px !important; }
+.overnightChoices li::after { display: none; }
+.overnightChoices strong { display: block; font-size: 10px; }
+.panel .overnightChoices button { width: fit-content; padding: 4px 7px; font-size: 10px; }
+.dayPlansStale { margin: 0; padding: 8px; border-radius: 6px; background: #fff7ed; color: #9a3412; font-size: 11px; line-height: 1.4; }
+
+@media (max-width: 560px) {
+  .panel .dayHeader { grid-template-columns: minmax(0, 1fr) auto; }
+  .dayHeader span:nth-child(2) { grid-column: 1 / -1; grid-row: 2; text-align: left; }
+}

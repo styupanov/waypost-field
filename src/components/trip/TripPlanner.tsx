@@ -56,6 +56,8 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
   const [destination, setDestination] = useState(initialDestination);
   const [pickingMode, setPickingMode] = useState<PickingMode>(null);
   const [activePoiId, setActivePoiId] = useState<number | null>(null);
+  const [activeNightIndex, setActiveNightIndex] = useState<number | null>(null);
+  const [mapFocusCoordinates, setMapFocusCoordinates] = useState<Coordinates[] | null>(null);
   const [hoveredPoiId, setHoveredPoiId] = useState<number | null>(null);
   const [replacementTargetId, setReplacementTargetId] = useState<number | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
@@ -89,6 +91,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       const draft = data.draft;
       setOwnedTripId(data.tripId); setOwnershipStatus("saved"); setSavedTripState("idle");
       setPlannerState({ status: "draft_ready", draft, isDirty: false }); setPreferences(draft.preferences);
+      setActiveNightIndex(null); setMapFocusCoordinates(null);
       setOrigin({ input: draft.origin.label, coordinates: draft.origin.coordinates, resolvedLabel: draft.origin.label, source: "text" });
       setDestination({ input: draft.destination.label, coordinates: draft.destination.coordinates, resolvedLabel: draft.destination.label, source: "text" });
       setStop(draft.stop ? { input: draft.stop.label, coordinates: draft.stop.coordinates, resolvedLabel: draft.stop.label, source: "text" } : null);
@@ -307,6 +310,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
           ? current.previousIsDirty
           : false,
     }));
+    setMapFocusCoordinates(null);
   }
 
   function failDraftGeneration() {
@@ -418,6 +422,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       (item) => item.attractionId === attractionId
     );
     setActivePoiId(attractionId);
+    setActiveNightIndex(null);
     if (!isAlternative) return;
     setIsAlongTheWayOpen(true);
     if (replacementTargetId !== null) {
@@ -443,11 +448,14 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
         destinationCoordinates={destination.coordinates}
         pickingMode={pickingMode}
         activePoiId={activePoiId}
+        activeNightIndex={activeNightIndex}
+        focusCoordinates={mapFocusCoordinates}
         hoveredPoiId={hoveredPoiId}
         isReplacing={replacementTargetId !== null}
         onMapPointSelected={selectMapPoint}
         onPoiHover={setHoveredPoiId}
         onPoiSelect={selectPoi}
+        onOvernightSelect={(nightIndex) => { setActivePoiId(null); setActiveNightIndex(nightIndex); }}
       />
       <TripIntentPanel
         origin={origin}
@@ -471,11 +479,14 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
         onDrivingPaceChange={updateDrivingPace}
         onTripDaysChange={updateTripDays}
         activePoiId={activePoiId}
+        activeNightIndex={activeNightIndex}
         hoveredPoiId={hoveredPoiId}
         replacementTargetId={replacementTargetId}
         editError={editError}
         onPoiHover={setHoveredPoiId}
         onPoiSelect={selectPoi}
+        onOvernightSelect={(nightIndex) => { setActivePoiId(null); setActiveNightIndex(nightIndex); const overnight = visibleDraft?.stops.find((item) => isOvernightStop(item) && item.nightIndex === nightIndex); if (overnight) setMapFocusCoordinates([overnight.coordinates]); }}
+        onDayFocus={setMapFocusCoordinates}
         onStartReplacement={(attractionId) => {
           setReplacementTargetId(attractionId);
           setActivePoiId(attractionId);

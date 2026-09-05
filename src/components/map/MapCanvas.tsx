@@ -25,11 +25,14 @@ type MapCanvasProps = {
   destinationCoordinates: Coordinates | null;
   pickingMode: PickingMode;
   activePoiId: number | null;
+  activeNightIndex: number | null;
+  focusCoordinates: Coordinates[] | null;
   hoveredPoiId: number | null;
   isReplacing: boolean;
   onMapPointSelected: (field: TripField, coordinates: Coordinates) => void;
   onPoiHover: (attractionId: number | null) => void;
   onPoiSelect: (attractionId: number) => void;
+  onOvernightSelect: (nightIndex: number) => void;
 };
 
 const ROUTE_SOURCE_ID = "route";
@@ -159,11 +162,14 @@ export default function MapCanvas({
   destinationCoordinates,
   pickingMode,
   activePoiId,
+  activeNightIndex,
+  focusCoordinates,
   hoveredPoiId,
   isReplacing,
   onMapPointSelected,
   onPoiHover,
   onPoiSelect,
+  onOvernightSelect,
 }: MapCanvasProps) {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const map = useRef<maplibregl.Map | null>(null);
@@ -175,11 +181,13 @@ export default function MapCanvas({
   const overnightMarkers = useRef(new Map<number, maplibregl.Marker>());
   const onPoiHoverRef = useRef(onPoiHover);
   const onPoiSelectRef = useRef(onPoiSelect);
+  const onOvernightSelectRef = useRef(onOvernightSelect);
 
   useEffect(() => {
     onPoiHoverRef.current = onPoiHover;
     onPoiSelectRef.current = onPoiSelect;
-  }, [onPoiHover, onPoiSelect]);
+    onOvernightSelectRef.current = onOvernightSelect;
+  }, [onPoiHover, onPoiSelect, onOvernightSelect]);
 
   useEffect(() => {
     if (!mapContainer.current || map.current) {
@@ -387,11 +395,34 @@ export default function MapCanvas({
       else {
         const element = document.createElement("div"); element.textContent = String(stop.nightIndex); element.setAttribute("aria-label", `Night ${stop.nightIndex}: ${stop.label} area`);
         Object.assign(element.style, { width: "25px", height: "25px", display: "grid", placeItems: "center", borderRadius: "6px", border: "2px solid white", background: "#0f766e", color: "white", font: "700 11px sans-serif", boxShadow: "0 2px 7px rgb(15 23 42 / 35%)" });
-        const marker = new maplibregl.Marker({ element }).setLngLat(position).setPopup(new maplibregl.Popup({ offset: 18 }).setText(`Night ${stop.nightIndex} · ${stop.label}${stop.admin1Code ? `, ${stop.admin1Code}` : ""} area`)).addTo(mapInstance);
+        const popup = new maplibregl.Popup({ offset: 18 }).setText(`Night ${stop.nightIndex} · ${stop.label}${stop.admin1Code ? `, ${stop.admin1Code}` : ""} area`);
+        popup.on("open", () => onOvernightSelectRef.current(stop.nightIndex));
+        const marker = new maplibregl.Marker({ element }).setLngLat(position).setPopup(popup).addTo(mapInstance);
         overnightMarkers.current.set(stop.nightIndex, marker);
       }
     }
   }, [overnightStops]);
+
+  useEffect(() => {
+    for (const [nightIndex, marker] of overnightMarkers.current) {
+      const active = nightIndex === activeNightIndex;
+      marker.getElement().style.filter = active ? "drop-shadow(0 0 5px rgb(15 23 42 / 70%)) brightness(1.12)" : "";
+      marker.getElement().style.zIndex = active ? "3" : "1";
+    }
+  }, [activeNightIndex, overnightStops]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+    if (!mapInstance || !focusCoordinates?.length) return;
+    if (focusCoordinates.length === 1) {
+      const point = focusCoordinates[0];
+      mapInstance.easeTo({ center: [point.lon, point.lat], zoom: Math.max(mapInstance.getZoom(), 8), duration: 700 });
+      return;
+    }
+    const bounds = new maplibregl.LngLatBounds();
+    for (const point of focusCoordinates) bounds.extend([point.lon, point.lat]);
+    mapInstance.fitBounds(bounds, { padding: 90, duration: 700, maxZoom: 10 });
+  }, [focusCoordinates]);
 
   useEffect(() => {
     const emphasizedId = hoveredPoiId ?? activePoiId;

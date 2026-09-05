@@ -26,7 +26,7 @@ import {
   type DrivingPace,
 } from "@/types/preferences";
 import { calculateTripDayRecommendation } from "@/lib/trip/multi-day";
-import type { FinalRoutePreview, FinalRoutePreviewState, FinalizedTripResult, TripFinalizationState } from "@/types/final-route";
+import type { FinalRoutePreview, FinalRoutePreviewState, FinalizedTripResult, FinalizedTripWorkspace, TripFinalizationState } from "@/types/final-route";
 
 const initialOrigin: TripEndpoint = {
   input: "Charlotte, NC",
@@ -76,6 +76,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
   const previewRequestInFlight = useRef(false);
   const [finalPreview, setFinalPreview] = useState<FinalRoutePreviewState>({ status: "idle" });
   const [finalizationState, setFinalizationState] = useState<TripFinalizationState>({ status: "draft" });
+  const [refreshStatus, setRefreshStatus] = useState<"idle" | "refreshing" | "error">("idle");
   const [preferences, setPreferences] = useState<TripPreferences>(() => ({
     ...DEFAULT_TRIP_PREFERENCES,
     preferredCategories: [],
@@ -90,7 +91,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
     void (async () => {
       const response = await fetch(`/api/trips/${requestedTripId}`);
       if (!response.ok) { if (!cancelled) setSavedTripState(response.status === 404 ? "forbidden" : "error"); return; }
-      const data = await response.json() as { tripId: string; draft: TripDraft; finalization: FinalizedTripResult | null };
+      const data = await response.json() as { tripId: string; draft: TripDraft; finalization: FinalizedTripWorkspace | null };
       if (cancelled) return;
       const draft = data.draft;
       setOwnedTripId(data.tripId); setOwnershipStatus("saved"); setSavedTripState("idle");
@@ -98,6 +99,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       setActiveNightIndex(null); setMapFocusCoordinates(null);
       setFinalPreview({ status: "idle" });
       setFinalizationState(data.finalization ? { status: "planned", result: data.finalization } : { status: "draft" });
+      setRefreshStatus("idle");
       setOrigin({ input: draft.origin.label, coordinates: draft.origin.coordinates, resolvedLabel: draft.origin.label, source: "text" });
       setDestination({ input: draft.destination.label, coordinates: draft.destination.coordinates, resolvedLabel: draft.destination.label, source: "text" });
       setStop(draft.stop ? { input: draft.stop.label, coordinates: draft.stop.coordinates, resolvedLabel: draft.stop.label, source: "text" } : null);
@@ -350,7 +352,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       : plannerState.status === "generating_draft"
         ? plannerState.previousDraft
         : null;
-  const displayedRoute = useMemo(() => finalizationState.status === "planned" ? { type: "Feature" as const, properties: { provider: "here" }, geometry: finalizationState.result.finalRoute.route } : finalPreview.status === "active" ? { type: "Feature" as const, properties: { provider: "here" }, geometry: finalPreview.result.route } : visibleDraft?.route ?? null, [finalPreview, finalizationState, visibleDraft]);
+  const displayedRoute = useMemo(() => finalizationState.status === "planned" && finalizationState.result.cache.status === "valid" ? { type: "Feature" as const, properties: { provider: "here" }, geometry: finalizationState.result.cache.finalRoute.route } : finalPreview.status === "active" ? { type: "Feature" as const, properties: { provider: "here" }, geometry: finalPreview.result.route } : visibleDraft?.route ?? null, [finalPreview, finalizationState, visibleDraft]);
 
   async function finalizeTrip() {
     if (!ownedTripId || !visibleDraft || plannerState.status !== "draft_ready" || plannerState.isDirty || finalizationState.status === "finalizing") return;
@@ -359,11 +361,24 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       const response = await fetch("/api/finalize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tripId: ownedTripId }) });
       const data = await response.json() as FinalizedTripResult | { error?: { message?: string } };
       if (!response.ok || !("tripStatus" in data)) throw new Error("error" in data ? data.error?.message : undefined);
-      setFinalPreview({ status: "idle" }); setFinalizationState({ status: "planned", result: data }); setReplacementTargetId(null); setIsAlongTheWayOpen(false);
+      const result: FinalizedTripWorkspace = { tripId: data.tripId, versionId: data.versionId, tripStatus: "planned", versionState: "finalized", finalizedAt: data.finalizedAt, provider: "here", cache: { status: "valid", provider: "here", fetchedAt: data.cache.fetchedAt, expiresAt: data.cache.expiresAt, finalRoute: data.finalRoute } };
+      setFinalPreview({ status: "idle" }); setFinalizationState({ status: "planned", result }); setReplacementTargetId(null); setIsAlongTheWayOpen(false);
     } catch (reason) {
       console.error("Trip finalization failed.");
       setFinalizationState({ status: "error", message: reason instanceof Error && reason.message ? reason.message : "The trip remains a Draft because finalization failed." });
     }
+  }
+
+  async function refreshFinalRoute() {
+    if (!ownedTripId || finalizationState.status !== "planned" || finalizationState.result.cache.status === "valid" || refreshStatus === "refreshing") return;
+    setRefreshStatus("refreshing");
+    try {
+      const response = await fetch("/api/finalize/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tripId: ownedTripId }) });
+      const data = await response.json() as FinalizedTripResult | { error?: { message?: string } };
+      if (!response.ok || !("tripStatus" in data)) throw new Error("refresh failed");
+      setFinalizationState({ status: "planned", result: { tripId: data.tripId, versionId: data.versionId, tripStatus: "planned", versionState: "finalized", finalizedAt: data.finalizedAt, provider: "here", cache: { status: "valid", provider: "here", fetchedAt: data.cache.fetchedAt, expiresAt: data.cache.expiresAt, finalRoute: data.finalRoute } } });
+      setRefreshStatus("idle");
+    } catch { console.error("Final route refresh failed."); setRefreshStatus("error"); }
   }
 
   async function previewFinalRoute() {
@@ -548,6 +563,8 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
         onRequestFinalize={() => setFinalizationState({ status: "confirming" })}
         onConfirmFinalize={() => void finalizeTrip()}
         onCancelFinalize={() => setFinalizationState({ status: "draft" })}
+        refreshStatus={refreshStatus}
+        onRefreshFinalRoute={() => void refreshFinalRoute()}
       />
       {visibleDraft && finalizationState.status !== "planned" && visibleDraft.alternatives.length > 0 ? (
         <AlongTheWay

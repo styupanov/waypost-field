@@ -21,12 +21,27 @@ export type FinalizedTripResult = {
   finalizedAt: string;
   provider: "here";
   finalRoute: Pick<FinalRoutePreview, "route" | "summary">;
-  cache: { fetchedAt: string; expiresAt: string };
+  cache: { status: "valid"; fetchedAt: string; expiresAt: string };
+};
+
+export type FinalRouteCacheState =
+  | { status: "valid"; provider: "here"; fetchedAt: string; expiresAt: string; finalRoute: FinalizedTripResult["finalRoute"] }
+  | { status: "expired"; provider: "here"; fetchedAt: string; expiresAt: string }
+  | { status: "missing"; provider: "here"; fetchedAt: null; expiresAt: null };
+
+export type FinalizedTripWorkspace = {
+  tripId: string;
+  versionId: string;
+  tripStatus: "planned";
+  versionState: "finalized";
+  finalizedAt: string;
+  provider: "here";
+  cache: FinalRouteCacheState;
 };
 
 export type TripFinalizationState =
   | { status: "draft" }
   | { status: "confirming" }
   | { status: "finalizing" }
-  | { status: "planned"; result: FinalizedTripResult }
+  | { status: "planned"; result: FinalizedTripWorkspace }
   | { status: "error"; message: string };

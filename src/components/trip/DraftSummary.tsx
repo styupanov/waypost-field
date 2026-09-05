@@ -36,6 +36,8 @@ type DraftSummaryProps = {
   onRequestFinalize: () => void;
   onConfirmFinalize: () => void;
   onCancelFinalize: () => void;
+  refreshStatus: "idle" | "refreshing" | "error";
+  onRefreshFinalRoute: () => void;
 };
 
 function signedDuration(seconds: number) {
@@ -76,6 +78,8 @@ export default function DraftSummary({
   onRequestFinalize,
   onConfirmFinalize,
   onCancelFinalize,
+  refreshStatus,
+  onRefreshFinalRoute,
 }: DraftSummaryProps) {
   const replacementTarget = draft.stops.find(
     (stop) =>
@@ -88,7 +92,15 @@ export default function DraftSummary({
       <TripSummary draft={draft} onEditTrip={onEditTrip} finalization={finalizationState.status === "planned" ? finalizationState.result : null} />
       {finalizationState.status === "planned" ? <section className={styles.finalizedNotice} aria-label="Planned trip">
         <strong>PLANNED</strong>
-        <span>Final route · HERE</span>
+        {finalizationState.result.cache.status === "valid" ? <>
+          <span>Final route · HERE</span>
+          <small>Route refreshed {new Date(finalizationState.result.cache.fetchedAt).toLocaleDateString()} · Available until {new Date(finalizationState.result.cache.expiresAt).toLocaleDateString()}</small>
+        </> : <>
+          <span>Final route needs refresh</span>
+          <small>Your trip is still finalized. Refresh the route to restore the current HERE geometry and driving estimates.</small>
+          <button type="button" disabled={refreshStatus === "refreshing"} onClick={onRefreshFinalRoute}>{refreshStatus === "refreshing" ? "Refreshing final route…" : "Refresh final route"}</button>
+          {refreshStatus === "error" ? <small role="alert">The final HERE route could not be refreshed. Your finalized trip is unchanged.</small> : null}
+        </>}
         <small>Finalized {new Date(finalizationState.result.finalizedAt).toLocaleString()}</small>
       </section> : finalPreview.status === "active" ? <section className={styles.finalPreview} aria-label="Final route preview">
         <div><strong>Final route preview</strong><small>HERE · Temporary preview</small></div>

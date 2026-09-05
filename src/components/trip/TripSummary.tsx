@@ -4,16 +4,16 @@ import {
   formatApproximateDuration,
 } from "@/lib/trip/formatters";
 import type { TripDraft } from "@/types/trip";
-import type { FinalizedTripResult } from "@/types/final-route";
+import type { FinalizedTripWorkspace } from "@/types/final-route";
 
 type TripSummaryProps = {
   draft: TripDraft;
   onEditTrip: () => void;
-  finalization: FinalizedTripResult | null;
+  finalization: FinalizedTripWorkspace | null;
 };
 
 export default function TripSummary({ draft, onEditTrip, finalization }: TripSummaryProps) {
-  const summary = finalization?.finalRoute.summary ?? draft.summary;
+  const summary = finalization?.cache.status === "valid" ? finalization.cache.finalRoute.summary : draft.summary;
   return (
     <section className={styles.tripSummary} aria-labelledby="trip-summary-heading">
       <div className={styles.draftHeading}>
@@ -21,12 +21,12 @@ export default function TripSummary({ draft, onEditTrip, finalization }: TripSum
           <h2 id="trip-summary-heading">
             {draft.origin.label} <span aria-hidden="true">→</span> {draft.destination.label}
           </h2>
-          <small>{finalization ? "Planned · Final route · HERE" : "Draft · Approximate"}</small>
+          <small>{finalization ? finalization.cache.status === "valid" ? "Planned · Final route · HERE" : "Planned · HERE route needs refresh" : "Draft · Approximate"}</small>
           {draft.multiDay.isMultiDay ? <p className={styles.multiDaySummary}>{draft.multiDay.selectedDays} days · {draft.multiDay.nights} nights · {formatApproximateDuration(summary.durationSeconds)} driving</p> : null}
         </div>
         {!finalization ? <button type="button" onClick={onEditTrip}>Edit trip</button> : null}
       </div>
-      <dl className={styles.summaryMetrics}>
+      {!finalization || finalization.cache.status === "valid" ? <dl className={styles.summaryMetrics}>
         <div>
           <dt>Driving time</dt>
           <dd>{formatApproximateDuration(summary.durationSeconds)}</dd>
@@ -45,7 +45,7 @@ export default function TripSummary({ draft, onEditTrip, finalization }: TripSum
             <dd>+{Math.round(draft.composition.actualDetourSeconds / 60)} min</dd>
           </div>
         ) : null}
-      </dl>
+      </dl> : <p className={styles.multiDaySummary}>Historical Draft route shown as map context until the HERE route is refreshed.</p>}
     </section>
   );
 }

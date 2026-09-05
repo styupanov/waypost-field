@@ -18,3 +18,10 @@ SELECT provider, distance_meters, duration_seconds, base_duration_seconds,
        ST_GeometryType(route_geom) AS cache_geom_type, ST_SRID(route_geom) AS cache_geom_srid
 FROM public.provider_route_cache
 WHERE trip_version_id = (SELECT current_version_id FROM public.trips WHERE id = :trip_id);
+
+-- Local expiry simulation. Both timestamps move because the schema preserves
+-- the invariant expires_at > fetched_at.
+UPDATE public.provider_route_cache
+SET fetched_at = now() - interval '31 days',
+    expires_at = now() - interval '1 minute'
+WHERE trip_version_id = (SELECT current_version_id FROM public.trips WHERE id = :trip_id);

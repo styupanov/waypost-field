@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticatedWaypostUserId } from "@/lib/auth/session";
 import { reconstructTripDraft } from "@/lib/trips/reconstruction";
-import { getExistingFinalization, getOwnedTrip } from "@/lib/trips/repository";
+import { getFinalizedTripWorkspace, getOwnedTrip } from "@/lib/trips/repository";
 
 export async function GET(_request: Request, context: { params: Promise<{ tripId: string }> }) {
   const userId = await authenticatedWaypostUserId();
@@ -10,7 +10,7 @@ export async function GET(_request: Request, context: { params: Promise<{ tripId
     const { tripId } = await context.params;
     const trip = await getOwnedTrip(userId, tripId);
     if (!trip) return NextResponse.json({ error: { code: "TRIP_NOT_FOUND", message: "Trip was not found." } }, { status: 404 });
-    const finalization = trip.status === "planned" ? await getExistingFinalization(userId, trip.id) : null;
+    const finalization = trip.status === "planned" ? await getFinalizedTripWorkspace(userId, trip.id) : null;
     return NextResponse.json({ tripId: trip.id, tripStatus: trip.status, versionState: trip.currentVersion?.state ?? null, draft: reconstructTripDraft(trip), finalization });
   } catch (error) {
     console.error("Failed to load owned trip.", error);

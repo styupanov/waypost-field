@@ -13,6 +13,7 @@
 # testing
 /coverage
 /tmp/h3-calibration/
+/tmp/route-divergence/
 
 # next.js
 /.next/

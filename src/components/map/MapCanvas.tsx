@@ -12,6 +12,8 @@ import type {
   TripField,
 } from "@/types/trip";
 import type { TripAlternative } from "@/types/trip";
+import type { PersonalCoverageResponse } from "@/types/coverage";
+import { coverageCellsToGeoJSON } from "@/lib/coverage/coverage-geojson";
 
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
@@ -29,6 +31,8 @@ type MapCanvasProps = {
   focusCoordinates: Coordinates[] | null;
   hoveredPoiId: number | null;
   isReplacing: boolean;
+  personalCoverageEnabled: boolean;
+  coverageRevision: number;
   onMapPointSelected: (field: TripField, coordinates: Coordinates) => void;
   onPoiHover: (attractionId: number | null) => void;
   onPoiSelect: (attractionId: number) => void;
@@ -37,6 +41,26 @@ type MapCanvasProps = {
 
 const ROUTE_SOURCE_ID = "route";
 const ROUTE_LAYER_ID = "route-line";
+const COVERAGE_SOURCE_ID = "waypost-personal-coverage";
+const COVERAGE_FILL_LAYER_ID = "waypost-personal-coverage-fill";
+const COVERAGE_OUTLINE_LAYER_ID = "waypost-personal-coverage-outline";
+const EMPTY_COVERAGE = coverageCellsToGeoJSON([]);
+
+function renderPersonalCoverage(map: maplibregl.Map, cells: string[]) {
+  const data = coverageCellsToGeoJSON(cells);
+  const source = map.getSource(COVERAGE_SOURCE_ID);
+  if (source) (source as maplibregl.GeoJSONSource).setData(data);
+  else map.addSource(COVERAGE_SOURCE_ID, { type: "geojson", data });
+  const beforeRoute = map.getLayer(ROUTE_LAYER_ID) ? ROUTE_LAYER_ID : undefined;
+  if (!map.getLayer(COVERAGE_FILL_LAYER_ID)) map.addLayer({
+    id: COVERAGE_FILL_LAYER_ID, type: "fill", source: COVERAGE_SOURCE_ID,
+    paint: { "fill-color": "#5f8f78", "fill-opacity": 0.2 },
+  }, beforeRoute);
+  if (!map.getLayer(COVERAGE_OUTLINE_LAYER_ID)) map.addLayer({
+    id: COVERAGE_OUTLINE_LAYER_ID, type: "line", source: COVERAGE_SOURCE_ID,
+    paint: { "line-color": "#315f4b", "line-width": 0.7, "line-opacity": 0.42 },
+  }, beforeRoute);
+}
 
 function renderRoute(map: maplibregl.Map, route: RouteFeature) {
   const routeSource = map.getSource(ROUTE_SOURCE_ID);
@@ -166,6 +190,8 @@ export default function MapCanvas({
   focusCoordinates,
   hoveredPoiId,
   isReplacing,
+  personalCoverageEnabled,
+  coverageRevision,
   onMapPointSelected,
   onPoiHover,
   onPoiSelect,
@@ -182,6 +208,7 @@ export default function MapCanvas({
   const onPoiHoverRef = useRef(onPoiHover);
   const onPoiSelectRef = useRef(onPoiSelect);
   const onOvernightSelectRef = useRef(onOvernightSelect);
+  const coverageRequestSequence = useRef(0);
 
   useEffect(() => {
     onPoiHoverRef.current = onPoiHover;
@@ -232,6 +259,46 @@ export default function MapCanvas({
       map.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+    if (!mapInstance) return;
+    if (!personalCoverageEnabled) {
+      const source = mapInstance.getSource(COVERAGE_SOURCE_ID);
+      if (source) (source as maplibregl.GeoJSONSource).setData(EMPTY_COVERAGE);
+      return;
+    }
+    let controller: AbortController | null = null;
+    let disposed = false;
+    const loadCoverage = async () => {
+      controller?.abort();
+      controller = new AbortController();
+      const requestSequence = ++coverageRequestSequence.current;
+      const bounds = mapInstance.getBounds();
+      const params = new URLSearchParams({
+        zoom: String(mapInstance.getZoom()), west: String(bounds.getWest()), south: String(bounds.getSouth()),
+        east: String(bounds.getEast()), north: String(bounds.getNorth()),
+      });
+      try {
+        const response = await fetch(`/api/map/coverage?${params}`, { signal: controller.signal });
+        if (!response.ok) return;
+        const coverage = await response.json() as PersonalCoverageResponse;
+        if (!disposed && requestSequence === coverageRequestSequence.current) renderPersonalCoverage(mapInstance, coverage.cells);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) console.error("Personal coverage could not be refreshed.");
+      }
+    };
+    const handleLoad = () => void loadCoverage();
+    const handleMoveEnd = () => void loadCoverage();
+    mapInstance.on("moveend", handleMoveEnd);
+    if (mapInstance.isStyleLoaded()) void loadCoverage(); else mapInstance.once("load", handleLoad);
+    return () => {
+      disposed = true;
+      controller?.abort();
+      mapInstance.off("moveend", handleMoveEnd);
+      mapInstance.off("load", handleLoad);
+    };
+  }, [personalCoverageEnabled, coverageRevision]);
 
   useEffect(() => {
     const mapInstance = map.current;

@@ -27,6 +27,7 @@ import {
   type DrivingPace,
 } from "@/types/preferences";
 import { calculateTripDayRecommendation } from "@/lib/trip/multi-day";
+import { resolveDisplayedTripRoute } from "@/lib/trip/display-route";
 import type { FinalRoutePreview, FinalRoutePreviewState, FinalizedTripResult, FinalizedTripWorkspace, TripFinalizationState, TripLifecycleActionState, TravelConfirmationActionState } from "@/types/final-route";
 
 const initialOrigin: TripEndpoint = {
@@ -82,6 +83,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [lifecycleActionState, setLifecycleActionState] = useState<TripLifecycleActionState>({ status: "idle" });
   const [travelConfirmationState, setTravelConfirmationState] = useState<TravelConfirmationActionState>({ status: "idle" });
+  const [coverageRevision, setCoverageRevision] = useState(0);
   const [preferences, setPreferences] = useState<TripPreferences>(() => ({
     ...DEFAULT_TRIP_PREFERENCES,
     preferredCategories: [],
@@ -366,7 +368,10 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       : plannerState.status === "generating_draft"
         ? plannerState.previousDraft
         : null;
-  const displayedRoute = useMemo(() => finalizationState.status === "planned" && finalizationState.result.cache.status === "valid" ? { type: "Feature" as const, properties: { provider: "here" }, geometry: finalizationState.result.cache.finalRoute.route } : finalPreview.status === "active" ? { type: "Feature" as const, properties: { provider: "here" }, geometry: finalPreview.result.route } : visibleDraft?.route ?? null, [finalPreview, finalizationState, visibleDraft]);
+  const displayedRoute = useMemo(
+    () => resolveDisplayedTripRoute(visibleDraft?.route ?? null, finalizationState, finalPreview),
+    [finalPreview, finalizationState, visibleDraft]
+  );
 
   async function finalizeTrip() {
     if (!ownedTripId || !visibleDraft || plannerState.status !== "draft_ready" || plannerState.isDirty || finalizationState.status === "finalizing") return;
@@ -435,6 +440,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       const data = await response.json() as { status?: "completed_unconfirmed" | "traveled" | "not_traveled"; startedAt?: string | null; endedAt?: string | null; travelConfirmationAt?: string | null; error?: { message?: string } };
       if (!response.ok || !data.status) throw new Error(data.error?.message);
       setFinalizationState((current) => current.status === "planned" ? { status: "planned", result: { ...current.result, tripStatus: data.status!, startedAt: data.startedAt ?? current.result.startedAt, endedAt: data.endedAt ?? current.result.endedAt, travelConfirmationAt: data.travelConfirmationAt ?? null } } : current);
+      setCoverageRevision((current) => current + 1);
       setTravelConfirmationState({ status: "idle" });
     } catch (reason) {
       console.error("Failed to update travel confirmation.");
@@ -586,6 +592,8 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
         focusCoordinates={mapFocusCoordinates}
         hoveredPoiId={hoveredPoiId}
         isReplacing={replacementTargetId !== null}
+        personalCoverageEnabled={Boolean(sessionUser)}
+        coverageRevision={coverageRevision}
         onMapPointSelected={selectMapPoint}
         onPoiHover={setHoveredPoiId}
         onPoiSelect={selectPoi}

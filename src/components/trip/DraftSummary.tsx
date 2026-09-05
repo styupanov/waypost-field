@@ -119,7 +119,11 @@ export default function DraftSummary({
       <TripSummary draft={draft} onEditTrip={onEditTrip} finalization={finalizationState.status === "planned" ? finalizationState.result : null} />
       {finalizationState.status === "planned" ? <section className={styles.finalizedNotice} aria-label="Finalized trip status">
         <strong>{finalizationState.result.tripStatus === "planned" ? "PLANNED" : finalizationState.result.tripStatus === "active" ? "ACTIVE" : finalizationState.result.tripStatus === "completed_unconfirmed" ? "TRIP COMPLETED" : finalizationState.result.tripStatus === "traveled" ? "TRAVELED" : "NOT TRAVELED"}</strong>
-        {finalizationState.result.cache.status === "valid" ? <>
+        {finalizationState.result.tripStatus === "traveled" ? <>
+          <span>Inferred traveled route</span>
+          <small>Based on your finalized itinerary. This is not a GPS track.</small>
+          {finalizationState.result.cache.status === "valid" ? <small>Finalization used HERE · Cached route refreshed {new Date(finalizationState.result.cache.fetchedAt).toLocaleDateString()} · Available until {new Date(finalizationState.result.cache.expiresAt).toLocaleDateString()}</small> : null}
+        </> : finalizationState.result.cache.status === "valid" ? <>
           <span>Final route · HERE</span>
           <small>Route refreshed {new Date(finalizationState.result.cache.fetchedAt).toLocaleDateString()} · Available until {new Date(finalizationState.result.cache.expiresAt).toLocaleDateString()}</small>
         </> : <>

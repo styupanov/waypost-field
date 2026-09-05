@@ -133,6 +133,9 @@ async function travelConfirmationTransaction(userId: string, tripId: string, out
         : "UPDATE public.trips SET status=$2,travel_confirmation_at=now(),updated_at=now() WHERE id=$1 RETURNING status,started_at,ended_at,travel_confirmation_at",
       outcome === "undo" ? [tripId] : [tripId, outcome]
     );
+    if (outcome === "undo") {
+      await client.query("DELETE FROM public.trip_poi_visit_confirmations WHERE user_id=$1 AND trip_version_id=$2", [userId, trip.current_version_id]);
+    }
     await client.query("COMMIT");
     const row = updated.rows[0];
     return { tripId, status: row.status, startedAt: row.started_at.toISOString(), endedAt: row.ended_at.toISOString(), travelConfirmationAt: row.travel_confirmation_at?.toISOString() ?? null };

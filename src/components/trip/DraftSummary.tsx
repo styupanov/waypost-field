@@ -1,6 +1,7 @@
 "use client";
 
 import RouteStops from "@/components/trip/RouteStops";
+import PoiVisitPanel from "@/components/trip/PoiVisitPanel";
 import TripSummary from "@/components/trip/TripSummary";
 import styles from "./TripIntentPanel.module.css";
 import { isAttractionStop, isOvernightStop, type Coordinates, type DraftEditAction, type TripDraft } from "@/types/trip";
@@ -228,6 +229,7 @@ export default function DraftSummary({
         onLoadOvernightAlternatives={onLoadOvernightAlternatives}
         onChangeOvernight={onChangeOvernight}
       />
+      {finalizationState.status === "planned" && finalizationState.result.tripStatus === "traveled" ? <PoiVisitPanel tripId={finalizationState.result.tripId} /> : null}
 
       {finalizationState.status !== "planned" && finalPreview.status !== "active" && (draft.summary.hasToll || draft.summary.hasFerry) ? (
         <ul className={styles.routeIndicators} aria-label="Route indicators">

@@ -18,6 +18,7 @@ import type {
 } from "@/types/trip-persistence";
 import type { RouteSummary } from "@/types/route";
 import type { FinalRoutePreview, FinalizedTripResult, FinalizedTripWorkspace } from "@/types/final-route";
+import { consumeFinalizationCredit } from "../credits/repository.ts";
 
 export class TripPersistenceError extends Error {
   readonly code:
@@ -575,6 +576,7 @@ export async function commitTripFinalizationTransaction(
     const finalizedAt = new Date();
     await client.query("UPDATE public.trip_versions SET state='finalized', finalized_at=$1, finalization_provider='here', updated_at=now() WHERE id=$2", [finalizedAt, expectedVersionId]);
     await client.query("UPDATE public.trips SET status='planned', updated_at=now() WHERE id=$1", [tripId]);
+    await consumeFinalizationCredit(client, userId, expectedVersionId);
   return finalizedResult(tripId, expectedVersionId, finalizedAt.toISOString(), cacheResult.rows[0]);
 }
 

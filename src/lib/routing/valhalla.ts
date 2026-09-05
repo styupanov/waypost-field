@@ -19,9 +19,11 @@ type ValhallaResponse = {
 };
 
 export class RoutingServiceError extends Error {
-  constructor(message: string, readonly statusCode = 502) {
+  readonly statusCode: number;
+  constructor(message: string, statusCode = 502) {
     super(message);
     this.name = "RoutingServiceError";
+    this.statusCode = statusCode;
   }
 }
 

@@ -3,6 +3,7 @@ import { authenticatedWaypostUserId } from "@/lib/auth/session";
 import { HereRoutingError } from "@/lib/routing/here";
 import { finalizeOwnedTrip, TripFinalizationError } from "@/lib/trips/finalization";
 import { TripPersistenceError } from "@/lib/trips/repository";
+import { TripCreditError } from "@/lib/credits/repository";
 
 function error(code: string, message: string, status: number) { return NextResponse.json({ error: { code, message } }, { status }); }
 function isUuid(value: unknown): value is string { return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
@@ -16,6 +17,7 @@ export async function POST(request: Request) {
   try {
     return NextResponse.json(await finalizeOwnedTrip(userId, (body as { tripId: string }).tripId));
   } catch (reason) {
+    if (reason instanceof TripCreditError) return error(reason.code, reason.message, 402);
     if (reason instanceof TripFinalizationError) return error(reason.code, reason.message, 409);
     if (reason instanceof HereRoutingError) return error(reason.code, reason.message, reason.statusCode);
     if (reason instanceof TripPersistenceError) {

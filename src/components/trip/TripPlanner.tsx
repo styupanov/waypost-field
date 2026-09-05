@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import MapCanvas from "@/components/map/MapCanvas";
 import AlongTheWay from "@/components/trip/AlongTheWay";
 import LocalSignInDialog from "@/components/trip/LocalSignInDialog";
@@ -49,6 +50,7 @@ function coordinateLabel(coordinates: Coordinates) {
 type PlannerSession = { email?: string | null; name?: string | null } | null;
 
 export default function TripPlanner({ initialSession, requestedTripId }: { initialSession: PlannerSession; requestedTripId: string | null }) {
+  const router = useRouter();
   const [plannerState, setPlannerState] = useState<PlannerState>({
     status: "trip_intent",
   });
@@ -77,11 +79,19 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
   const [finalPreview, setFinalPreview] = useState<FinalRoutePreviewState>({ status: "idle" });
   const [finalizationState, setFinalizationState] = useState<TripFinalizationState>({ status: "draft" });
   const [refreshStatus, setRefreshStatus] = useState<"idle" | "refreshing" | "error">("idle");
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [preferences, setPreferences] = useState<TripPreferences>(() => ({
     ...DEFAULT_TRIP_PREFERENCES,
     preferredCategories: [],
     excludedCategories: [],
   }));
+
+  useEffect(() => {
+    if (!sessionUser) return;
+    let cancelled = false;
+    void fetch("/api/credits").then(async (response) => { if (!response.ok) throw new Error("credits"); return response.json() as Promise<{ balance: number }>; }).then((data) => { if (!cancelled) setCreditBalance(data.balance); }).catch(() => { if (!cancelled) setCreditBalance(null); });
+    return () => { cancelled = true; };
+  }, [sessionUser]);
 
   useEffect(() => {
     if (!requestedTripId || !sessionUser) {
@@ -363,6 +373,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
       if (!response.ok || !("tripStatus" in data)) throw new Error("error" in data ? data.error?.message : undefined);
       const result: FinalizedTripWorkspace = { tripId: data.tripId, versionId: data.versionId, tripStatus: "planned", versionState: "finalized", finalizedAt: data.finalizedAt, provider: "here", cache: { status: "valid", provider: "here", fetchedAt: data.cache.fetchedAt, expiresAt: data.cache.expiresAt, finalRoute: data.finalRoute } };
       setFinalPreview({ status: "idle" }); setFinalizationState({ status: "planned", result }); setReplacementTargetId(null); setIsAlongTheWayOpen(false);
+      void fetch("/api/credits").then(async (creditsResponse) => { if (creditsResponse.ok) setCreditBalance((await creditsResponse.json() as { balance: number }).balance); }).catch(() => undefined);
     } catch (reason) {
       console.error("Trip finalization failed.");
       setFinalizationState({ status: "error", message: reason instanceof Error && reason.message ? reason.message : "The trip remains a Draft because finalization failed." });
@@ -490,6 +501,35 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
     }
   }
 
+  function startNewTrip() {
+    setPlannerState({ status: "trip_intent" });
+    setOrigin({ ...initialOrigin });
+    setStop(null);
+    setDestination({ ...initialDestination });
+    setPickingMode(null);
+    setActivePoiId(null);
+    setActiveNightIndex(null);
+    setMapFocusCoordinates(null);
+    setHoveredPoiId(null);
+    setReplacementTargetId(null);
+    setEditError(null);
+    setIsAlongTheWayOpen(false);
+    setOwnedTripId(null);
+    setOwnershipStatus("unsaved");
+    setSavedTripState("idle");
+    setFindingAlternatives(false);
+    setFinalPreview({ status: "idle" });
+    setFinalizationState({ status: "draft" });
+    setRefreshStatus("idle");
+    setPreferences({
+      ...DEFAULT_TRIP_PREFERENCES,
+      preferredCategories: [],
+      excludedCategories: [],
+    });
+    setIsMyTripsOpen(false);
+    router.replace("/");
+  }
+
   return (
     <>
       <MapCanvas
@@ -565,6 +605,7 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
         onCancelFinalize={() => setFinalizationState({ status: "draft" })}
         refreshStatus={refreshStatus}
         onRefreshFinalRoute={() => void refreshFinalRoute()}
+        creditBalance={creditBalance}
       />
       {visibleDraft && finalizationState.status !== "planned" && visibleDraft.alternatives.length > 0 ? (
         <AlongTheWay
@@ -600,7 +641,14 @@ export default function TripPlanner({ initialSession, requestedTripId }: { initi
         <button onClick={() => { if (sessionUser) setIsMyTripsOpen(true); else setAuthPurpose("trips"); }}>My Trips</button>
         {sessionUser ? <><span>{sessionUser.name || sessionUser.email}</span><button onClick={() => void signOut({ redirectTo: ownedTripId ? `/?trip=${ownedTripId}` : "/" })}>Sign out</button></> : null}
       </div>
-      <MyTripsDrawer open={isMyTripsOpen && Boolean(sessionUser)} currentTripId={ownedTripId ?? requestedTripId} onClose={() => setIsMyTripsOpen(false)} />
+      <MyTripsDrawer
+        open={isMyTripsOpen && Boolean(sessionUser)}
+        currentTripId={ownedTripId ?? requestedTripId}
+        hasClientOnlyChanges={Boolean(visibleDraft) && ownershipStatus === "unsaved"}
+        newTripDisabled={plannerState.status === "generating_draft"}
+        onClose={() => setIsMyTripsOpen(false)}
+        onNewTrip={startNewTrip}
+      />
       {authPurpose ? <LocalSignInDialog onCancel={() => setAuthPurpose(null)} onAuthenticated={async () => { const purpose = authPurpose; const session = await getSession(); setSessionUser(session?.user ?? null); setAuthPurpose(null); if (purpose === "save") await persistCurrentDraft(); else if (purpose === "trips") setIsMyTripsOpen(true); }} /> : null}
       {savedTripState === "loading" ? <div className="load-gate">Loading saved trip…</div> : null}
       {savedTripState === "forbidden" ? <div className="load-gate"><div><p>{sessionUser ? "You don't have access to this saved trip." : "Sign in to open this saved trip."}</p>{!sessionUser ? <button onClick={() => setAuthPurpose("open-trip")}>Sign in</button> : null}</div></div> : null}

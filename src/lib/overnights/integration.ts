@@ -6,7 +6,8 @@ import type { OvernightAreaCandidate } from "@/types/overnights";
 import type { DraftOvernightStop, ItineraryStop, TripDraft } from "@/types/trip";
 
 export class OvernightPlanningError extends Error {
-  constructor(readonly nightIndex: number) { super(`No acceptable overnight area was found for night ${nightIndex}.`); this.name = "OvernightPlanningError"; }
+  readonly nightIndex: number;
+  constructor(nightIndex: number) { super(`No acceptable overnight area was found for night ${nightIndex}.`); this.name = "OvernightPlanningError"; this.nightIndex = nightIndex; }
 }
 
 export function overnightStopFromCandidate(candidate: OvernightAreaCandidate, nightIndex: number, targetDrivingSeconds: number, source: "waypost" | "user"): DraftOvernightStop {

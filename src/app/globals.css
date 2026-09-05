@@ -32,6 +32,7 @@ body {
 .finding-places { position: absolute; z-index: 3; bottom: 24px; left: 422px; padding: 9px 12px; border-radius: 8px; background: white; color: #475569; font: 12px var(--font-geist-sans), sans-serif; }
 .my-trips-drawer { position: absolute; z-index: 5; top: 16px; right: 16px; width: min(360px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 16px; border: 1px solid #e2e8f0; border-radius: 12px; background: rgb(255 255 255 / 97%); box-shadow: 0 16px 40px rgb(15 23 42 / 24%); color: #1f2937; font-family: var(--font-geist-sans), sans-serif; }
 .my-trips-drawer header { display: flex; align-items: center; justify-content: space-between; }
+.my-trips-drawer header div { display: flex; align-items: center; gap: 10px; }
 .my-trips-drawer h2 { margin: 0; font-size: 18px; }
 .my-trips-drawer header button { border: 0; background: transparent; color: #1d4ed8; cursor: pointer; }
 .my-trips-drawer ul { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
@@ -40,4 +41,8 @@ body {
 .my-trips-drawer li > button { display: grid; gap: 4px; width: 100%; padding: 11px; border: 0; border-radius: inherit; background: transparent; color: inherit; cursor: pointer; font: inherit; text-align: left; }
 .my-trips-drawer strong { font-size: 12px; line-height: 1.35; }
 .my-trips-drawer span, .my-trips-drawer small, .my-trips-drawer p { color: #64748b; font-size: 11px; }
+.my-trips-drawer .new-trip-confirmation { display: grid; gap: 8px; margin-top: 14px; padding: 12px; border: 1px solid #f59e0b; border-radius: 8px; background: #fffbeb; }
+.my-trips-drawer .new-trip-confirmation p { margin: 0; }
+.my-trips-drawer .new-trip-confirmation div { display: flex; gap: 8px; }
+.my-trips-drawer .new-trip-confirmation button { flex: 1; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background: white; color: #1f2937; cursor: pointer; }
 @media (max-width: 560px) { .my-trips-drawer { inset: 8px 8px auto; width: auto; max-height: calc(100dvh - 16px); } }

@@ -883,6 +883,7 @@
 .finalizeAction { display: grid; gap: 5px; padding-top: 8px; border-top: 1px solid #e2e8f0; }
 .panel .finalizeAction > button { padding: 9px 12px; background: #1e293b; color: white; }
 .finalizeAction small { color: #92400e; font-size: 10px; }
+.finalizeAction .creditBalance { color: #475569; font-weight: 700; }
 .finalizeAction div { display: grid; gap: 7px; padding: 9px; border: 1px solid #cbd5e1; border-radius: 7px; }
 .finalizeAction p { margin: 0; color: #475569; font-size: 11px; line-height: 1.4; }
 .finalizeAction div span { display: flex; gap: 6px; }

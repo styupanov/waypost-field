@@ -8,10 +8,11 @@ function dateLabel(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(value));
 }
 
-export default function MyTripsDrawer({ open, currentTripId, onClose }: { open: boolean; currentTripId: string | null; onClose: () => void }) {
+export default function MyTripsDrawer({ open, currentTripId, hasClientOnlyChanges, newTripDisabled, onClose, onNewTrip }: { open: boolean; currentTripId: string | null; hasClientOnlyChanges: boolean; newTripDisabled: boolean; onClose: () => void; onNewTrip: () => void }) {
   const router = useRouter();
   const [trips, setTrips] = useState<TripListItem[] | null>(null);
   const [error, setError] = useState(false);
+  const [isConfirmingNewTrip, setIsConfirmingNewTrip] = useState(false);
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -24,7 +25,12 @@ export default function MyTripsDrawer({ open, currentTripId, onClose }: { open: 
   }, [open]);
   if (!open) return null;
   return <aside className="my-trips-drawer" aria-label="My Trips">
-    <header><h2>My Trips</h2><button onClick={onClose} aria-label="Close My Trips">Close</button></header>
+    <header><h2>My Trips</h2><div><button disabled={newTripDisabled} onClick={() => { if (hasClientOnlyChanges) setIsConfirmingNewTrip(true); else onNewTrip(); }}>New trip</button><button onClick={onClose} aria-label="Close My Trips">Close</button></div></header>
+    {isConfirmingNewTrip ? <div className="new-trip-confirmation" role="dialog" aria-label="Start a new trip?">
+      <strong>Start a new trip?</strong>
+      <p>Changes that haven&apos;t been rebuilt will be discarded.</p>
+      <div><button onClick={() => setIsConfirmingNewTrip(false)}>Cancel</button><button onClick={onNewTrip}>New trip</button></div>
+    </div> : null}
     {error ? <p role="alert">Saved trips could not be loaded.</p> : trips === null ? <p>Loading trips…</p> : trips.length === 0 ? <div><p>No saved trips yet.</p><p>Plan a trip and save it to your map.</p></div> :
       <ul>{trips.map((trip) => <li key={trip.id} className={trip.id === currentTripId ? "current" : undefined}>
         <button onClick={() => { onClose(); router.push(`/?trip=${trip.id}`); }}>

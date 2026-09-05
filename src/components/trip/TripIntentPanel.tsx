@@ -78,6 +78,7 @@ type TripIntentPanelProps = {
   onCancelFinalize: () => void;
   refreshStatus: "idle" | "refreshing" | "error";
   onRefreshFinalRoute: () => void;
+  creditBalance: number | null;
 };
 
 class TripBuildError extends Error {
@@ -182,6 +183,7 @@ export default function TripIntentPanel({
   onCancelFinalize,
   refreshStatus,
   onRefreshFinalRoute,
+  creditBalance,
 }: TripIntentPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [isEditingTrip, setIsEditingTrip] = useState(false);
@@ -456,6 +458,7 @@ export default function TripIntentPanel({
           onCancelFinalize={onCancelFinalize}
           refreshStatus={refreshStatus}
           onRefreshFinalRoute={onRefreshFinalRoute}
+          creditBalance={creditBalance}
         />
       ) : null}
       {visibleDraft && finalizationState.status !== "planned" ? (

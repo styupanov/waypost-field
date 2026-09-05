@@ -38,6 +38,7 @@ type DraftSummaryProps = {
   onCancelFinalize: () => void;
   refreshStatus: "idle" | "refreshing" | "error";
   onRefreshFinalRoute: () => void;
+  creditBalance: number | null;
 };
 
 function signedDuration(seconds: number) {
@@ -80,6 +81,7 @@ export default function DraftSummary({
   onCancelFinalize,
   refreshStatus,
   onRefreshFinalRoute,
+  creditBalance,
 }: DraftSummaryProps) {
   const replacementTarget = draft.stops.find(
     (stop) =>
@@ -112,10 +114,12 @@ export default function DraftSummary({
         {finalPreview.status === "error" ? <span role="alert">{finalPreview.message}</span> : null}
       </div>}
       {ownershipStatus === "saved" && finalizationState.status !== "planned" ? <div className={styles.finalizeAction}>
+        {creditBalance !== null ? <small className={styles.creditBalance}>Trip Credits: {creditBalance}</small> : null}
         {finalizationState.status === "confirming" ? <div role="dialog" aria-label="Finalize this trip?">
-          <strong>Finalize this trip?</strong><p>We&apos;ll calculate the final route through your selected stops with HERE. The finalized version can&apos;t be edited.</p>
-          <span><button type="button" onClick={onCancelFinalize}>Cancel</button><button type="button" onClick={onConfirmFinalize}>Finalize trip</button></span>
-        </div> : <button type="button" disabled={isDirty || dayPlansStale || isEditing || finalizationState.status === "finalizing"} onClick={onRequestFinalize}>{finalizationState.status === "finalizing" ? "Finalizing trip…" : "Finalize trip"}</button>}
+          <strong>Finalize this trip?</strong><p>We&apos;ll calculate the final road-ready route through your selected stops. This uses 1 Trip Credit and creates a finalized version that can&apos;t be edited.</p>
+          <span><button type="button" onClick={onCancelFinalize}>Cancel</button><button type="button" onClick={onConfirmFinalize}>Finalize · 1 Credit</button></span>
+        </div> : <button type="button" disabled={creditBalance === null || creditBalance < 1 || isDirty || dayPlansStale || isEditing || finalizationState.status === "finalizing"} onClick={onRequestFinalize}>{finalizationState.status === "finalizing" ? "Finalizing trip…" : "Finalize trip · 1 Credit"}</button>}
+        {creditBalance === 0 ? <small>No Trip Credits available. You need 1 Trip Credit to finalize this trip.</small> : null}
         {isDirty || dayPlansStale ? <small>Rebuild the trip before finalizing.</small> : null}
         {finalizationState.status === "error" ? <small role="alert">{finalizationState.message}</small> : null}
       </div> : null}

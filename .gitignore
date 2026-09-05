@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/tmp/h3-calibration/
 
 # next.js
 /.next/

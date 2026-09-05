@@ -1,7 +1,7 @@
 import type { VisitDuration } from "@/types/attractions";
 import type { InterestCategory, TripPreferences } from "@/types/preferences";
 import type { RouteFeature, RouteSummary } from "@/types/route";
-import type { Coordinates } from "@/types/trip";
+import type { Coordinates, DraftDayPlan } from "@/types/trip";
 
 export type PersistedTripStatus = "draft";
 export type PersistedTripVersionState = "draft" | "finalized";
@@ -18,6 +18,7 @@ export type AttractionSnapshot = {
   personalizedScore: number;
   individualDetourDistanceKm: number;
   individualDetourDurationSeconds: number;
+  dayIndex?: number | null;
 };
 
 export type PersistedTripStop = {
@@ -51,6 +52,7 @@ export type PersistedTripVersion = {
   routingEngine: string;
   routingEngineVersion: string | null;
   plannerVersion: string;
+  dayPlans: DraftDayPlan[];
   stops: PersistedTripStop[];
   createdAt: string;
   updatedAt: string;

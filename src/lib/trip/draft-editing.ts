@@ -173,7 +173,7 @@ export async function editTripDraft(
     alternatives: edited.alternatives,
     composition: {
       ...draft.composition,
-      selectedPoiCount: stops.filter(isAttractionStop).length,
+      selectedPoiCount: stops.filter((stop) => isAttractionStop(stop) && stop.source === "waypost").length,
       actualDetourSeconds: Math.max(0, rawBaselineDetour),
       actualDetourWasClamped: rawBaselineDetour < 0,
       suggestedVisitDuration: suggestedVisitDuration(stops.filter((stop): stop is DraftStop => !isOvernightStop(stop))),

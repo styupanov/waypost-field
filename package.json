@@ -12,6 +12,7 @@
     "db:verify-ownership": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-auth-ownership.ts",
     "test:multi-day": "node --experimental-strip-types scripts/verify-multi-day.ts",
     "test:overnights": "node --experimental-strip-types scripts/verify-overnight-domain.ts",
+    "test:day-composition": "node --experimental-strip-types scripts/verify-day-composition.ts",
     "db:verify-overnights": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-overnight-persistence.ts"
   },
   "dependencies": {

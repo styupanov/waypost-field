@@ -16,6 +16,7 @@ import type { RouteFeature, RoutePoint, RouteResponse } from "@/types/route";
 import { calculateTripDayRecommendation } from "@/lib/trip/multi-day";
 import { integrateDefaultOvernights } from "@/lib/overnights/integration";
 import { preserveUserOvernightSelections } from "@/lib/overnights/planning";
+import { composeDayAwareAttractions } from "@/lib/trip/day-composition";
 
 export const COMPOSITION_CORRIDOR_METERS = 25_000;
 export const DRIVING_DETOUR_BUDGET_RATIO = 0.15;
@@ -293,6 +294,51 @@ export async function composeTripDraft(
     baseline.summary.durationSeconds * DRIVING_DETOUR_BUDGET_RATIO,
     MAX_DRIVING_DETOUR_SECONDS
   );
+  const multiDay = calculateTripDayRecommendation(baseline.summary.durationSeconds, request.preferences);
+  if (multiDay.isMultiDay) {
+    let structuralRoute = baseline;
+    let structuralStops = hardDraftStops;
+    let structuralRouteCalls = 0;
+    if ((request.hardUserAttractions ?? []).length > 0) {
+      const sequence = waypointSequence(request, [], baseline.route);
+      structuralRoute = await calculateRoute(sequence.locations);
+      structuralStops = sequence.stops;
+      structuralRouteCalls = 1;
+    }
+    const rawStructuralDetour = structuralRoute.summary.durationSeconds - baseline.summary.durationSeconds;
+    const structuralDraft: TripDraft = {
+      origin: request.origin,
+      stop: request.stop,
+      destination: request.destination,
+      baselineSummary: baseline.summary,
+      route: structuralRoute.route,
+      summary: structuralRoute.summary,
+      stops: structuralStops,
+      preferences: { ...request.preferences, selectedTripDays: multiDay.selectedDays },
+      multiDay,
+      overnightAlternatives: [],
+      dayPlans: [],
+      alternatives: [],
+      lastEdit: null,
+      composition: {
+        targetPoiCount: target,
+        selectedPoiCount: 0,
+        detourBudgetSeconds,
+        actualDetourSeconds: Math.max(0, rawStructuralDetour),
+        actualDetourWasClamped: rawStructuralDetour < 0,
+        valhallaCallCount: baselineRouteCalls + structuralRouteCalls,
+        corridorCandidateCount: 0,
+        candidateCountConsidered: 0,
+        candidatesAfterDeduplication: 0,
+        opportunityShortlistSize: 0,
+        candidatePoolTruncated: false,
+        suggestedVisitDuration: suggestedVisitDuration(structuralStops),
+      },
+    };
+    const preserveUserChoices = preserveUserOvernightSelections(request.previousSelectedTripDays, multiDay.selectedDays);
+    const withOvernights = await integrateDefaultOvernights(structuralDraft, request.existingUserOvernights ?? [], preserveUserChoices);
+    return composeDayAwareAttractions(withOvernights, target);
+  }
   const opportunityResult = await findAttractionOpportunities(
     {
       locations: skeletonLocations,
@@ -374,8 +420,9 @@ export async function composeTripDraft(
       ...request.preferences,
       selectedTripDays: calculateTripDayRecommendation(baseline.summary.durationSeconds, request.preferences).selectedDays,
     },
-    multiDay: calculateTripDayRecommendation(baseline.summary.durationSeconds, request.preferences),
+    multiDay,
     overnightAlternatives: [],
+    dayPlans: [],
     alternatives,
     lastEdit: null,
     composition: {

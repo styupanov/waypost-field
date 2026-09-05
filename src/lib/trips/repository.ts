@@ -73,6 +73,7 @@ type VersionRow = {
   routing_engine: string;
   routing_engine_version: string | null;
   planner_version: string;
+  day_planning_metadata: import("../../types/trip.ts").DraftDayPlan[];
   created_at: Date;
   updated_at: Date;
   finalized_at: Date | null;
@@ -166,6 +167,7 @@ function stopPersistence(stop: ItineraryStop) {
       personalizedScore: stop.personalizedScore,
       individualDetourDistanceKm: stop.individualDetourDistanceKm,
       individualDetourDurationSeconds: stop.individualDetourDurationSeconds,
+      dayIndex: stop.dayIndex ?? null,
     },
     settlementGeonameId: null, nightIndex: null, admin1Snapshot: null, featureCodeSnapshot: null, populationSnapshot: null, overnightMetadata: null,
   };
@@ -223,6 +225,7 @@ function versionValues(draft: TripDraft, routingEngineVersion: string | null) {
     draft.baselineSummary.distanceKm * 1000, draft.baselineSummary.durationSeconds,
     draft.baselineSummary.hasToll, draft.baselineSummary.hasHighway, draft.baselineSummary.hasFerry,
     draft.composition.actualDetourSeconds, WAYPOST_ROUTING_ENGINE, routingEngineVersion, WAYPOST_PLANNER_VERSION,
+    JSON.stringify(draft.dayPlans),
   ];
 }
 
@@ -264,10 +267,10 @@ export async function createTripWithDraft(
         duration_seconds, has_toll, has_highway, has_ferry,
         baseline_distance_m, baseline_duration_seconds, baseline_has_toll,
         baseline_has_highway, baseline_has_ferry, driving_detour_seconds,
-        routing_engine, routing_engine_version, planner_version
+        routing_engine, routing_engine_version, planner_version, day_planning_metadata
       ) VALUES (
         $1, 1, 'draft', $2::jsonb, ST_SetSRID(ST_GeomFromGeoJSON($3), 4326),
-        $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+        $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb
       ) RETURNING id`,
       [trip.rows[0].id, ...values]
     );
@@ -290,7 +293,7 @@ async function loadVersion(client: PoolClient, versionId: string): Promise<Persi
       distance_m, duration_seconds, has_toll, has_highway, has_ferry,
       baseline_distance_m, baseline_duration_seconds, baseline_has_toll,
       baseline_has_highway, baseline_has_ferry, driving_detour_seconds,
-      routing_engine, routing_engine_version, planner_version, created_at, updated_at, finalized_at
+      routing_engine, routing_engine_version, planner_version, day_planning_metadata, created_at, updated_at, finalized_at
      FROM public.trip_versions WHERE id = $1`,
     [versionId]
   );
@@ -310,7 +313,7 @@ async function loadVersion(client: PoolClient, versionId: string): Promise<Persi
     summary: toSummary(row), baselineSummary: toSummary(row, true),
     drivingDetourSeconds: row.driving_detour_seconds,
     routingEngine: row.routing_engine, routingEngineVersion: row.routing_engine_version,
-    plannerVersion: row.planner_version,
+    plannerVersion: row.planner_version, dayPlans: row.day_planning_metadata ?? [],
     stops: stopsResult.rows.map((stop): PersistedTripStop => ({
       id: stop.id, position: stop.position, stopType: stop.stop_type, source: stop.source,
       attractionId: stop.attraction_id === null ? null : Number(stop.attraction_id), label: stop.label,
@@ -440,8 +443,9 @@ export async function saveCurrentDraftVersion(
         distance_m=$3, duration_seconds=$4, has_toll=$5, has_highway=$6, has_ferry=$7,
         baseline_distance_m=$8, baseline_duration_seconds=$9, baseline_has_toll=$10,
         baseline_has_highway=$11, baseline_has_ferry=$12, driving_detour_seconds=$13,
-        routing_engine=$14, routing_engine_version=$15, planner_version=$16, updated_at=now()
-       WHERE id=$17`,
+        routing_engine=$14, routing_engine_version=$15, planner_version=$16,
+        day_planning_metadata=$17::jsonb, updated_at=now()
+       WHERE id=$18`,
       [...values, versionId]
     );
     await replaceStops(client, versionId, draft);

@@ -26,6 +26,7 @@ export type OpportunityQuery = {
 
 type OpportunityOptions = {
   baselineRoute?: RouteResponse;
+  validationLimit?: number;
 };
 
 function squaredDistance(left: RoutePoint, right: RoutePoint) {
@@ -129,7 +130,8 @@ export async function findAttractionOpportunities(
   }
 
   const baseline = options.baselineRoute ?? (await calculateRoute(locations));
-  const evaluated = await mapWithConcurrency(shortlist, VALHALLA_CONCURRENCY, async (candidate) => {
+  const validationPool = shortlist.slice(0, options.validationLimit ?? shortlist.length);
+  const evaluated = await mapWithConcurrency(validationPool, VALHALLA_CONCURRENCY, async (candidate) => {
     const candidateLocations = insertAttractionPreservingStops(locations, { lat: candidate.lat, lon: candidate.lon });
     const candidateRoute = await calculateRoute(candidateLocations);
     return buildOpportunity(candidate, baseline.summary, candidateRoute.summary);
@@ -142,7 +144,7 @@ export async function findAttractionOpportunities(
       .sort((left, right) => right.score - left.score || left.attraction.id - right.attraction.id),
       preferences
     ),
-    candidateRoutesEvaluated: shortlist.length,
+    candidateRoutesEvaluated: validationPool.length,
     diagnostics: {
       corridorCandidateCount: candidateResult.totalCount,
       candidateCountConsidered: candidateResult.candidates.length,

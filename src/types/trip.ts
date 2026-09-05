@@ -42,6 +42,35 @@ export type TripDraft = {
   lastEdit: DraftEditImpact | null;
   multiDay: MultiDayPlan;
   overnightAlternatives: OvernightNightCandidates[];
+  dayPlans: DraftDayPlan[];
+};
+
+export type DraftDayBoundary = {
+  kind: "origin" | "overnight" | "destination";
+  label: string;
+  coordinates: Coordinates;
+  nightIndex: number | null;
+};
+
+export type DraftDayPlan = {
+  dayIndex: number;
+  start: DraftDayBoundary;
+  end: DraftDayBoundary;
+  structuralDrivingSeconds: number;
+  structuralDistanceKm: number;
+  autoPoiTarget: number;
+  selectedAutoPoiCount: number;
+  hardAttractionCount: number;
+  autoVisitMinutesKnown: number;
+  hardVisitMinutesKnown: number;
+  autoDetourBudgetSeconds: number;
+  actualAutoDetourSeconds: number;
+  selectedAttractionIds: number[];
+  hardAttractionIds: number[];
+  corridorCandidateCount: number;
+  candidatesAfterDeduplication: number;
+  opportunityShortlistSize: number;
+  valhallaCallCount: number;
 };
 
 export type MultiDayPlan = {
@@ -73,6 +102,7 @@ export type DraftWaypostStop = {
   personalizedScore: number;
   individualDetourDistanceKm: number;
   individualDetourDurationSeconds: number;
+  dayIndex?: number | null;
 };
 
 export type DraftUserAttractionStop = Omit<DraftWaypostStop, "source"> & {

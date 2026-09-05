@@ -42,6 +42,7 @@ function reconstructedStop(stop: PersistedTripStop): ItineraryStop {
     personalizedScore: snapshot.personalizedScore,
     individualDetourDistanceKm: snapshot.individualDetourDistanceKm,
     individualDetourDurationSeconds: snapshot.individualDetourDurationSeconds,
+    dayIndex: snapshot.dayIndex ?? null,
   };
   return stop.source === "waypost" ? { ...shared, source: "waypost" } : { ...shared, source: "user_attraction" };
 }
@@ -75,10 +76,11 @@ export function reconstructTripDraft(trip: PersistedTrip): TripDraft {
     multiDay,
     alternatives: [],
     overnightAlternatives: [],
+    dayPlans: version.dayPlans ?? [],
     lastEdit: null,
     composition: {
       targetPoiCount: targetPoiCount(baselineSeconds),
-      selectedPoiCount: stops.filter(isAttractionStop).length,
+      selectedPoiCount: stops.filter((stop) => isAttractionStop(stop) && stop.source === "waypost").length,
       detourBudgetSeconds: Math.min(
         baselineSeconds * DRIVING_DETOUR_BUDGET_RATIO,
         MAX_DRIVING_DETOUR_SECONDS

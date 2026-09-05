@@ -21,6 +21,7 @@ const draft: TripDraft = {
   preferences: { preferredCategories: [], excludedCategories: [], detourTolerance: "balanced", stopStyle: "balanced", drivingPace: "balanced", selectedTripDays: 1, tripDaysOverridden: false },
   multiDay: { isMultiDay: false, drivingPace: "balanced", recommendedDays: 1, selectedDays: 1, nights: 0, baselineDrivingHours: 2, dayOptions: [1, 2] },
   overnightAlternatives: [],
+  dayPlans: [],
   composition: { targetPoiCount: 1, selectedPoiCount: 0, detourBudgetSeconds: 1200, actualDetourSeconds: 0, actualDetourWasClamped: false, valhallaCallCount: 1, corridorCandidateCount: 0, candidateCountConsidered: 0, candidatesAfterDeduplication: 0, opportunityShortlistSize: 0, candidatePoolTruncated: false, suggestedVisitDuration: { minimumMinutes: 0, maximumMinutes: 0, hasUnknown: false } },
 };
 

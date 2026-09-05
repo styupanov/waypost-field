@@ -17,6 +17,7 @@ import { coverageCellsToGeoJSON } from "@/lib/coverage/coverage-geojson";
 import { buildFogMask, padCoverageViewport, type FogMaskFeature } from "@/lib/coverage/fog-mask";
 import type { CoverageViewport } from "@/types/coverage";
 import { coverageStyleForMode } from "@/lib/coverage/coverage-style";
+import type { TraveledRouteHistoryResponse, VisitedPlacesResponse } from "@/types/personal-history";
 
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
@@ -39,6 +40,8 @@ type MapCanvasProps = {
   personalMapMode: boolean;
   personalCoverageBounds: CoverageViewport | null;
   personalMapCameraReady: boolean;
+  traveledRoutesEnabled: boolean;
+  visitedPlacesEnabled: boolean;
   onMapPointSelected: (field: TripField, coordinates: Coordinates) => void;
   onPoiHover: (attractionId: number | null) => void;
   onPoiSelect: (attractionId: number) => void;
@@ -57,6 +60,10 @@ const FOG_FILL_OPACITY = 0.48;
 const EMPTY_COVERAGE = coverageCellsToGeoJSON([]);
 const EMPTY_FOG: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
 const EMPTY_ROUTE: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
+const HISTORY_ROUTE_SOURCE_ID = "waypost-traveled-routes";
+const HISTORY_ROUTE_LAYER_ID = "waypost-traveled-routes-line";
+const VISITED_PLACES_SOURCE_ID = "waypost-visited-places";
+const VISITED_PLACES_LAYER_ID = "waypost-visited-places-circle";
 
 function renderPersonalCoverage(map: maplibregl.Map, cells: string[], fog: FogMaskFeature, personalMapMode: boolean) {
   const coverageStyle = coverageStyleForMode(personalMapMode);
@@ -64,7 +71,7 @@ function renderPersonalCoverage(map: maplibregl.Map, cells: string[], fog: FogMa
   const source = map.getSource(COVERAGE_SOURCE_ID);
   if (source) (source as maplibregl.GeoJSONSource).setData(data);
   else map.addSource(COVERAGE_SOURCE_ID, { type: "geojson", data });
-  const beforeRoute = map.getLayer(ROUTE_LAYER_ID) ? ROUTE_LAYER_ID : undefined;
+  const beforeRoute = map.getLayer(FOG_FILL_LAYER_ID) ? FOG_FILL_LAYER_ID : map.getLayer(HISTORY_ROUTE_LAYER_ID) ? HISTORY_ROUTE_LAYER_ID : map.getLayer(VISITED_PLACES_LAYER_ID) ? VISITED_PLACES_LAYER_ID : map.getLayer(ROUTE_LAYER_ID) ? ROUTE_LAYER_ID : undefined;
   if (!map.getLayer(COVERAGE_FILL_LAYER_ID)) map.addLayer({
     id: COVERAGE_FILL_LAYER_ID, type: "fill", source: COVERAGE_SOURCE_ID,
     paint: { "fill-color": "#5f8f78", "fill-opacity": coverageStyle.fillOpacity },
@@ -76,10 +83,11 @@ function renderPersonalCoverage(map: maplibregl.Map, cells: string[], fog: FogMa
   const fogSource = map.getSource(FOG_SOURCE_ID);
   if (fogSource) (fogSource as maplibregl.GeoJSONSource).setData(fog);
   else map.addSource(FOG_SOURCE_ID, { type: "geojson", data: fog });
+  const beforeHistory = map.getLayer(HISTORY_ROUTE_LAYER_ID) ? HISTORY_ROUTE_LAYER_ID : map.getLayer(VISITED_PLACES_LAYER_ID) ? VISITED_PLACES_LAYER_ID : map.getLayer(ROUTE_LAYER_ID) ? ROUTE_LAYER_ID : undefined;
   if (!map.getLayer(FOG_FILL_LAYER_ID)) map.addLayer({
     id: FOG_FILL_LAYER_ID, type: "fill", source: FOG_SOURCE_ID,
     paint: { "fill-color": FOG_FILL_COLOR, "fill-opacity": FOG_FILL_OPACITY },
-  }, beforeRoute);
+  }, beforeHistory);
 }
 
 function renderRoute(map: maplibregl.Map, route: RouteFeature) {
@@ -215,6 +223,8 @@ export default function MapCanvas({
   personalMapMode,
   personalCoverageBounds,
   personalMapCameraReady,
+  traveledRoutesEnabled,
+  visitedPlacesEnabled,
   onMapPointSelected,
   onPoiHover,
   onPoiSelect,
@@ -232,6 +242,8 @@ export default function MapCanvas({
   const onPoiSelectRef = useRef(onPoiSelect);
   const onOvernightSelectRef = useRef(onOvernightSelect);
   const coverageRequestSequence = useRef(0);
+  const historyRouteRequestSequence = useRef(0);
+  const visitedPlacesRequestSequence = useRef(0);
 
   useEffect(() => {
     onPoiHoverRef.current = onPoiHover;
@@ -330,6 +342,61 @@ export default function MapCanvas({
       mapInstance.off("load", handleLoad);
     };
   }, [personalCoverageEnabled, coverageRevision, personalMapMode]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+    if (!mapInstance) return;
+    if (!personalMapMode || !traveledRoutesEnabled) {
+      const source = mapInstance.getSource(HISTORY_ROUTE_SOURCE_ID);
+      if (source) (source as maplibregl.GeoJSONSource).setData(EMPTY_ROUTE);
+      if (mapInstance.getLayer(HISTORY_ROUTE_LAYER_ID)) mapInstance.setLayoutProperty(HISTORY_ROUTE_LAYER_ID, "visibility", "none");
+      return;
+    }
+    let controller: AbortController | null = null;
+    let disposed = false;
+    const load = async () => {
+      controller?.abort(); controller = new AbortController(); const sequence = ++historyRouteRequestSequence.current;
+      const raw = mapInstance.getBounds(); const bounds = padCoverageViewport({ west: raw.getWest(), south: raw.getSouth(), east: raw.getEast(), north: raw.getNorth() });
+      const response = await fetch(`/api/map/history/routes?${new URLSearchParams(Object.fromEntries(Object.entries(bounds).map(([key, value]) => [key, String(value)])))}`, { signal: controller.signal });
+      if (!response.ok) return; const data = await response.json() as TraveledRouteHistoryResponse;
+      if (disposed || sequence !== historyRouteRequestSequence.current) return;
+      const source = mapInstance.getSource(HISTORY_ROUTE_SOURCE_ID);
+      if (source) (source as maplibregl.GeoJSONSource).setData(data.features); else mapInstance.addSource(HISTORY_ROUTE_SOURCE_ID, { type: "geojson", data: data.features });
+      if (!mapInstance.getLayer(HISTORY_ROUTE_LAYER_ID)) mapInstance.addLayer({ id: HISTORY_ROUTE_LAYER_ID, type: "line", source: HISTORY_ROUTE_SOURCE_ID, layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#33413d", "line-width": 2.2, "line-opacity": 0.72 } });
+      else mapInstance.setLayoutProperty(HISTORY_ROUTE_LAYER_ID, "visibility", "visible");
+    };
+    const move = () => void load().catch((error) => { if (!(error instanceof DOMException && error.name === "AbortError")) console.error("Traveled route history could not be refreshed."); });
+    mapInstance.on("moveend", move); move();
+    return () => { disposed = true; controller?.abort(); mapInstance.off("moveend", move); };
+  }, [personalMapMode, traveledRoutesEnabled]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+    if (!mapInstance) return;
+    if (!personalMapMode || !visitedPlacesEnabled) {
+      const source = mapInstance.getSource(VISITED_PLACES_SOURCE_ID);
+      if (source) (source as maplibregl.GeoJSONSource).setData(EMPTY_COVERAGE);
+      if (mapInstance.getLayer(VISITED_PLACES_LAYER_ID)) mapInstance.setLayoutProperty(VISITED_PLACES_LAYER_ID, "visibility", "none");
+      return;
+    }
+    let controller: AbortController | null = null;
+    let disposed = false;
+    const load = async () => {
+      controller?.abort(); controller = new AbortController(); const sequence = ++visitedPlacesRequestSequence.current;
+      const raw = mapInstance.getBounds(); const bounds = padCoverageViewport({ west: raw.getWest(), south: raw.getSouth(), east: raw.getEast(), north: raw.getNorth() });
+      const response = await fetch(`/api/map/history/places?${new URLSearchParams(Object.fromEntries(Object.entries(bounds).map(([key, value]) => [key, String(value)])))}`, { signal: controller.signal });
+      if (!response.ok) return; const data = await response.json() as VisitedPlacesResponse;
+      if (disposed || sequence !== visitedPlacesRequestSequence.current) return;
+      const features: GeoJSON.FeatureCollection<GeoJSON.Point> = { type: "FeatureCollection", features: data.places.map((place) => ({ type: "Feature", properties: { name: place.name, visitCount: place.visitCount }, geometry: { type: "Point", coordinates: [place.longitude, place.latitude] } })) };
+      const source = mapInstance.getSource(VISITED_PLACES_SOURCE_ID);
+      if (source) (source as maplibregl.GeoJSONSource).setData(features); else mapInstance.addSource(VISITED_PLACES_SOURCE_ID, { type: "geojson", data: features });
+      if (!mapInstance.getLayer(VISITED_PLACES_LAYER_ID)) mapInstance.addLayer({ id: VISITED_PLACES_LAYER_ID, type: "circle", source: VISITED_PLACES_SOURCE_ID, paint: { "circle-radius": 5, "circle-color": "#f8fafc", "circle-stroke-color": "#33413d", "circle-stroke-width": 1.5, "circle-opacity": 0.9 } });
+      else mapInstance.setLayoutProperty(VISITED_PLACES_LAYER_ID, "visibility", "visible");
+    };
+    const move = () => void load().catch((error) => { if (!(error instanceof DOMException && error.name === "AbortError")) console.error("Visited places could not be refreshed."); });
+    mapInstance.on("moveend", move); move();
+    return () => { disposed = true; controller?.abort(); mapInstance.off("moveend", move); };
+  }, [personalMapMode, visitedPlacesEnabled]);
 
   useEffect(() => {
     const mapInstance = map.current;

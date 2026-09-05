@@ -30,6 +30,7 @@ import { calculateTripDayRecommendation } from "@/lib/trip/multi-day";
 import { resolveDisplayedTripRoute } from "@/lib/trip/display-route";
 import { isCurrentWorkspace, resolveWorkspaceMode, showsTripWorkspace, workspaceUrl, type WorkspaceDestination } from "@/lib/trip/workspace-mode";
 import type { PersonalCoverageBoundsResponse } from "@/types/coverage";
+import { DEFAULT_PERSONAL_MAP_LAYERS, personalHistoryLayerActive } from "@/lib/personal-history/layer-state";
 import type { FinalRoutePreview, FinalRoutePreviewState, FinalizedTripResult, FinalizedTripWorkspace, TripFinalizationState, TripLifecycleActionState, TravelConfirmationActionState } from "@/types/final-route";
 
 const initialOrigin: TripEndpoint = {
@@ -92,6 +93,9 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
   );
   const [personalCoverageBounds, setPersonalCoverageBounds] = useState<PersonalCoverageBoundsResponse["bounds"]>(null);
   const [pendingNavigation, setPendingNavigation] = useState<WorkspaceDestination | null>(null);
+  const [personalMapLayersOpen, setPersonalMapLayersOpen] = useState(false);
+  const [traveledRoutesEnabled, setTraveledRoutesEnabled] = useState<boolean>(DEFAULT_PERSONAL_MAP_LAYERS.traveledRoutes);
+  const [visitedPlacesEnabled, setVisitedPlacesEnabled] = useState<boolean>(DEFAULT_PERSONAL_MAP_LAYERS.visitedPlaces);
   const [preferences, setPreferences] = useState<TripPreferences>(() => ({
     ...DEFAULT_TRIP_PREFERENCES,
     preferredCategories: [],
@@ -658,6 +662,8 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
         personalMapMode={workspaceMode === "personal_map"}
         personalCoverageBounds={personalCoverageBounds}
         personalMapCameraReady={personalMapCoverageState === "available" || personalMapCoverageState === "empty"}
+        traveledRoutesEnabled={personalHistoryLayerActive(workspaceMode, traveledRoutesEnabled)}
+        visitedPlacesEnabled={personalHistoryLayerActive(workspaceMode, visitedPlacesEnabled)}
         onMapPointSelected={selectMapPoint}
         onPoiHover={setHoveredPoiId}
         onPoiSelect={selectPoi}
@@ -763,6 +769,11 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
         <strong>My Map</strong>
         <small>{personalMapCoverageState === "empty" ? "Your map will open up as you travel." : "Your traveled territory"}</small>
         <button type="button" onClick={startNewTrip}>New trip</button>
+        <button type="button" onClick={() => setPersonalMapLayersOpen((current) => !current)}>Map layers</button>
+        {personalMapLayersOpen ? <div className="personal-map-layers" aria-label="Map layers">
+          <label><input type="checkbox" checked={traveledRoutesEnabled} onChange={(event) => setTraveledRoutesEnabled(event.target.checked)} /> Traveled routes</label>
+          <label><input type="checkbox" checked={visitedPlacesEnabled} onChange={(event) => setVisitedPlacesEnabled(event.target.checked)} /> Visited places</label>
+        </div> : null}
       </section> : null}
       <div className="account-control">
         {sessionUser && workspaceMode !== "personal_map" ? <button onClick={enterPersonalMap}>My Map</button> : null}

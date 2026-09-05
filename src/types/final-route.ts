@@ -1,5 +1,5 @@
 export type RoutingWaypoint = { latitude: number; longitude: number };
-export type ExecutableTripStatus = "planned" | "active" | "completed_unconfirmed";
+export type ExecutableTripStatus = "planned" | "active" | "completed_unconfirmed" | "traveled" | "not_traveled";
 
 export type FinalRoutePreview = {
   provider: "here";
@@ -36,6 +36,7 @@ export type FinalizedTripWorkspace = {
   tripStatus: ExecutableTripStatus;
   startedAt: string | null;
   endedAt: string | null;
+  travelConfirmationAt: string | null;
   versionState: "finalized";
   finalizedAt: string;
   provider: "here";
@@ -55,4 +56,11 @@ export type TripLifecycleActionState =
   | { status: "starting" }
   | { status: "confirming_complete" }
   | { status: "completing" }
+  | { status: "error"; message: string };
+
+export type TravelConfirmationActionState =
+  | { status: "idle" }
+  | { status: "confirming"; outcome: "traveled" | "not_traveled" }
+  | { status: "saving"; action: "confirm" | "undo" }
+  | { status: "confirming_undo" }
   | { status: "error"; message: string };

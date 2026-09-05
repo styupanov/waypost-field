@@ -62,6 +62,7 @@ type TripRow = {
   current_version_id: string | null;
   started_at: Date | null;
   ended_at: Date | null;
+  travel_confirmation_at: Date | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -357,6 +358,7 @@ export async function getTrip(tripId: string): Promise<PersistedTrip | null> {
       currentVersion: row.current_version_id ? await loadVersion(client, row.current_version_id) : null,
       startedAt: row.started_at?.toISOString() ?? null,
       endedAt: row.ended_at?.toISOString() ?? null,
+      travelConfirmationAt: row.travel_confirmation_at?.toISOString() ?? null,
       createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(),
     };
   } finally {
@@ -376,7 +378,7 @@ type TripListRow = {
   version_state: PersistedTripVersionState | null;
   preferences: PersistedTripVersion["preferences"] | null;
   origin_label: string | null; destination_label: string | null;
-  attraction_stop_count: string; started_at: Date | null; ended_at: Date | null; created_at: Date; updated_at: Date;
+  attraction_stop_count: string; started_at: Date | null; ended_at: Date | null; travel_confirmation_at: Date | null; created_at: Date; updated_at: Date;
 };
 
 export async function listTripsForUser(userId: string): Promise<TripListItem[]> {
@@ -387,7 +389,7 @@ export async function listTripsForUser(userId: string): Promise<TripListItem[]> 
        MAX(s.label) FILTER (WHERE s.stop_type = 'origin') AS origin_label,
        MAX(s.label) FILTER (WHERE s.stop_type = 'destination') AS destination_label,
        COUNT(*) FILTER (WHERE s.stop_type = 'attraction') AS attraction_stop_count,
-       t.started_at, t.ended_at, t.created_at, t.updated_at
+       t.started_at, t.ended_at, t.travel_confirmation_at, t.created_at, t.updated_at
      FROM public.trips t
      LEFT JOIN public.trip_versions v ON v.id = t.current_version_id
      LEFT JOIN public.trip_stops s ON s.trip_version_id = v.id
@@ -403,6 +405,7 @@ export async function listTripsForUser(userId: string): Promise<TripListItem[]> 
     destinationLabel: row.destination_label,
     attractionStopCount: Number(row.attraction_stop_count), preferences: row.preferences,
     startedAt: row.started_at?.toISOString() ?? null, endedAt: row.ended_at?.toISOString() ?? null,
+    travelConfirmationAt: row.travel_confirmation_at?.toISOString() ?? null,
     createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(),
   }));
 }
@@ -528,7 +531,7 @@ export async function getFinalizedTripWorkspace(userId: string, tripId: string):
   const client = await getPostgresPool().connect();
   try {
     const row = await loadFinalRouteCache(client, version.id);
-    const base = { tripId: trip.id, versionId: version.id, tripStatus: trip.status, startedAt: trip.startedAt, endedAt: trip.endedAt, versionState: "finalized" as const, finalizedAt: version.finalizedAt!, provider: "here" as const };
+    const base = { tripId: trip.id, versionId: version.id, tripStatus: trip.status, startedAt: trip.startedAt, endedAt: trip.endedAt, travelConfirmationAt: trip.travelConfirmationAt, versionState: "finalized" as const, finalizedAt: version.finalizedAt!, provider: "here" as const };
     if (!row) return { ...base, cache: { status: "missing", provider: "here", fetchedAt: null, expiresAt: null } };
     if (row.expires_at.getTime() <= Date.now()) return { ...base, cache: { status: "expired", provider: "here", fetchedAt: row.fetched_at.toISOString(), expiresAt: row.expires_at.toISOString() } };
     const result = finalizedResult(trip.id, version.id, trip.status, version.finalizedAt!, row);

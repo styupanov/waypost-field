@@ -25,7 +25,7 @@ import type {
   TripPreferences,
   DrivingPace,
 } from "@/types/preferences";
-import type { FinalRoutePreviewState, TripFinalizationState, TripLifecycleActionState } from "@/types/final-route";
+import type { FinalRoutePreviewState, TripFinalizationState, TripLifecycleActionState, TravelConfirmationActionState } from "@/types/final-route";
 
 type TripIntentPanelProps = {
   origin: TripEndpoint;
@@ -85,6 +85,12 @@ type TripIntentPanelProps = {
   onRequestComplete: () => void;
   onConfirmComplete: () => void;
   onCancelLifecycleAction: () => void;
+  travelConfirmationState: TravelConfirmationActionState;
+  onRequestTravelConfirmation: (outcome: "traveled" | "not_traveled") => void;
+  onConfirmTravelConfirmation: (outcome: "traveled" | "not_traveled") => void;
+  onRequestUndoTravelConfirmation: () => void;
+  onConfirmUndoTravelConfirmation: () => void;
+  onCancelTravelConfirmation: () => void;
 };
 
 class TripBuildError extends Error {
@@ -196,6 +202,12 @@ export default function TripIntentPanel({
   onRequestComplete,
   onConfirmComplete,
   onCancelLifecycleAction,
+  travelConfirmationState,
+  onRequestTravelConfirmation,
+  onConfirmTravelConfirmation,
+  onRequestUndoTravelConfirmation,
+  onConfirmUndoTravelConfirmation,
+  onCancelTravelConfirmation,
 }: TripIntentPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [isEditingTrip, setIsEditingTrip] = useState(false);
@@ -477,6 +489,12 @@ export default function TripIntentPanel({
           onRequestComplete={onRequestComplete}
           onConfirmComplete={onConfirmComplete}
           onCancelLifecycleAction={onCancelLifecycleAction}
+          travelConfirmationState={travelConfirmationState}
+          onRequestTravelConfirmation={onRequestTravelConfirmation}
+          onConfirmTravelConfirmation={onConfirmTravelConfirmation}
+          onRequestUndoTravelConfirmation={onRequestUndoTravelConfirmation}
+          onConfirmUndoTravelConfirmation={onConfirmUndoTravelConfirmation}
+          onCancelTravelConfirmation={onCancelTravelConfirmation}
         />
       ) : null}
       {visibleDraft && finalizationState.status !== "planned" ? (

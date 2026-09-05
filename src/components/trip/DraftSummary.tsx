@@ -4,7 +4,7 @@ import RouteStops from "@/components/trip/RouteStops";
 import TripSummary from "@/components/trip/TripSummary";
 import styles from "./TripIntentPanel.module.css";
 import { isAttractionStop, isOvernightStop, type Coordinates, type DraftEditAction, type TripDraft } from "@/types/trip";
-import type { FinalRoutePreviewState, TripFinalizationState, TripLifecycleActionState } from "@/types/final-route";
+import type { FinalRoutePreviewState, TripFinalizationState, TripLifecycleActionState, TravelConfirmationActionState } from "@/types/final-route";
 import { formatApproximateDistance, formatApproximateDuration } from "@/lib/trip/formatters";
 import { hasStaleDayPlans } from "@/lib/trip/day-plan-coherence";
 
@@ -45,6 +45,12 @@ type DraftSummaryProps = {
   onRequestComplete: () => void;
   onConfirmComplete: () => void;
   onCancelLifecycleAction: () => void;
+  travelConfirmationState: TravelConfirmationActionState;
+  onRequestTravelConfirmation: (outcome: "traveled" | "not_traveled") => void;
+  onConfirmTravelConfirmation: (outcome: "traveled" | "not_traveled") => void;
+  onRequestUndoTravelConfirmation: () => void;
+  onConfirmUndoTravelConfirmation: () => void;
+  onCancelTravelConfirmation: () => void;
 };
 
 function signedDuration(seconds: number) {
@@ -94,6 +100,12 @@ export default function DraftSummary({
   onRequestComplete,
   onConfirmComplete,
   onCancelLifecycleAction,
+  travelConfirmationState,
+  onRequestTravelConfirmation,
+  onConfirmTravelConfirmation,
+  onRequestUndoTravelConfirmation,
+  onConfirmUndoTravelConfirmation,
+  onCancelTravelConfirmation,
 }: DraftSummaryProps) {
   const replacementTarget = draft.stops.find(
     (stop) =>
@@ -105,7 +117,7 @@ export default function DraftSummary({
     <div className={styles.draftWorkspace}>
       <TripSummary draft={draft} onEditTrip={onEditTrip} finalization={finalizationState.status === "planned" ? finalizationState.result : null} />
       {finalizationState.status === "planned" ? <section className={styles.finalizedNotice} aria-label="Finalized trip status">
-        <strong>{finalizationState.result.tripStatus === "planned" ? "PLANNED" : finalizationState.result.tripStatus === "active" ? "ACTIVE" : "TRIP COMPLETED"}</strong>
+        <strong>{finalizationState.result.tripStatus === "planned" ? "PLANNED" : finalizationState.result.tripStatus === "active" ? "ACTIVE" : finalizationState.result.tripStatus === "completed_unconfirmed" ? "TRIP COMPLETED" : finalizationState.result.tripStatus === "traveled" ? "TRAVELED" : "NOT TRAVELED"}</strong>
         {finalizationState.result.cache.status === "valid" ? <>
           <span>Final route · HERE</span>
           <small>Route refreshed {new Date(finalizationState.result.cache.fetchedAt).toLocaleDateString()} · Available until {new Date(finalizationState.result.cache.expiresAt).toLocaleDateString()}</small>
@@ -118,6 +130,7 @@ export default function DraftSummary({
         <small>Finalized {new Date(finalizationState.result.finalizedAt).toLocaleString()}</small>
         {finalizationState.result.startedAt ? <small>Started {new Date(finalizationState.result.startedAt).toLocaleString()}</small> : null}
         {finalizationState.result.endedAt ? <small>Ended {new Date(finalizationState.result.endedAt).toLocaleString()}</small> : null}
+        {finalizationState.result.travelConfirmationAt ? <small>{finalizationState.result.tripStatus === "traveled" ? "Travel confirmed" : "Confirmed"} {new Date(finalizationState.result.travelConfirmationAt).toLocaleString()}</small> : null}
         {finalizationState.result.tripStatus === "planned" ? (
           lifecycleActionState.status === "confirming_start" ? <div role="dialog" aria-label="Start this trip?">
             <strong>Start this trip?</strong><p>This will mark the trip as active.</p>
@@ -131,7 +144,23 @@ export default function DraftSummary({
             <span><button type="button" onClick={onCancelLifecycleAction}>Cancel</button><button type="button" onClick={onConfirmComplete}>End trip</button></span>
           </div> : <button type="button" disabled={lifecycleActionState.status === "completing"} onClick={onRequestComplete}>{lifecycleActionState.status === "completing" ? "Ending trip…" : "End trip"}</button>}
         </> : null}
-        {finalizationState.result.tripStatus === "completed_unconfirmed" ? <small>Travel confirmation is still needed before this trip is added to your map.</small> : null}
+        {finalizationState.result.tripStatus === "completed_unconfirmed" ? <>
+          <small>Travel confirmation is still needed before this trip is added to your map.</small>
+          <span>Did you take this trip?</span>
+          {travelConfirmationState.status === "confirming" ? <div role="dialog" aria-label={travelConfirmationState.outcome === "traveled" ? "Confirm this trip as traveled?" : "Mark this trip as not traveled?"}>
+            <strong>{travelConfirmationState.outcome === "traveled" ? "Confirm this trip as traveled?" : "Mark this trip as not traveled?"}</strong>
+            <p>{travelConfirmationState.outcome === "traveled" ? "Waypost will treat this trip as one you actually took." : "It will stay in My Trips, but it won't count as a traveled trip."}</p>
+            <span><button type="button" onClick={onCancelTravelConfirmation}>Cancel</button><button type="button" onClick={() => onConfirmTravelConfirmation(travelConfirmationState.outcome)}>{travelConfirmationState.outcome === "traveled" ? "Confirm traveled" : "Mark not traveled"}</button></span>
+          </div> : <span><button type="button" disabled={travelConfirmationState.status === "saving"} onClick={() => onRequestTravelConfirmation("traveled")}>Yes, I traveled this trip</button><button type="button" disabled={travelConfirmationState.status === "saving"} onClick={() => onRequestTravelConfirmation("not_traveled")}>I didn&apos;t take this trip</button></span>}
+        </> : null}
+        {finalizationState.result.tripStatus === "not_traveled" ? <small>This trip won&apos;t count as traveled.</small> : null}
+        {finalizationState.result.tripStatus === "traveled" || finalizationState.result.tripStatus === "not_traveled" ? (
+          travelConfirmationState.status === "confirming_undo" ? <div role="dialog" aria-label="Undo travel confirmation?">
+            <strong>Undo travel confirmation?</strong><p>This trip will return to waiting for travel confirmation.</p>
+            <span><button type="button" onClick={onCancelTravelConfirmation}>Cancel</button><button type="button" onClick={onConfirmUndoTravelConfirmation}>Undo</button></span>
+          </div> : <button type="button" disabled={travelConfirmationState.status === "saving"} onClick={onRequestUndoTravelConfirmation}>{travelConfirmationState.status === "saving" ? "Updating confirmation…" : "Undo travel confirmation"}</button>
+        ) : null}
+        {travelConfirmationState.status === "error" ? <small role="alert">{travelConfirmationState.message}</small> : null}
         {lifecycleActionState.status === "error" ? <small role="alert">{lifecycleActionState.message}</small> : null}
       </section> : finalPreview.status === "active" ? <section className={styles.finalPreview} aria-label="Final route preview">
         <div><strong>Final route preview</strong><small>HERE · Temporary preview</small></div>
@@ -207,7 +236,7 @@ export default function DraftSummary({
         </ul>
       ) : null}
       {finalizationState.status === "planned" ? (
-        <p className={styles.draftNotice}>{finalizationState.result.tripStatus === "completed_unconfirmed" ? "This trip is finalized and completed; travel confirmation is still pending." : "This trip is finalized and can&apos;t be edited."}</p>
+        <p className={styles.draftNotice}>{finalizationState.result.tripStatus === "completed_unconfirmed" ? "This trip is finalized and completed; travel confirmation is still pending." : finalizationState.result.tripStatus === "not_traveled" ? "This trip is finalized and won't count as traveled." : "This trip is finalized and can&apos;t be edited."}</p>
       ) : isDirty ? (
         <p className={styles.dirtyNotice} role="status">
           Trip inputs changed — rebuild route.

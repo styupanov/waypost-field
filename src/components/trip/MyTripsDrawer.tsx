@@ -10,6 +10,7 @@ function dateLabel(value: string) {
 
 function statusLabel(status: TripListItem["status"]) {
   if (status === "completed_unconfirmed") return "Completed";
+  if (status === "not_traveled") return "Not traveled";
   return status[0].toUpperCase() + status.slice(1);
 }
 

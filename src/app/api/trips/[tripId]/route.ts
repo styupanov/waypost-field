@@ -11,7 +11,7 @@ export async function GET(_request: Request, context: { params: Promise<{ tripId
     const trip = await getOwnedTrip(userId, tripId);
     if (!trip) return NextResponse.json({ error: { code: "TRIP_NOT_FOUND", message: "Trip was not found." } }, { status: 404 });
     const finalization = trip.status === "draft" ? null : await getFinalizedTripWorkspace(userId, trip.id);
-    return NextResponse.json({ tripId: trip.id, tripStatus: trip.status, startedAt: trip.startedAt, endedAt: trip.endedAt, versionState: trip.currentVersion?.state ?? null, draft: reconstructTripDraft(trip), finalization });
+    return NextResponse.json({ tripId: trip.id, tripStatus: trip.status, startedAt: trip.startedAt, endedAt: trip.endedAt, travelConfirmationAt: trip.travelConfirmationAt, versionState: trip.currentVersion?.state ?? null, draft: reconstructTripDraft(trip), finalization });
   } catch (error) {
     console.error("Failed to load owned trip.", error);
     return NextResponse.json({ error: { code: "TRIP_LOAD_FAILED", message: "The trip could not be loaded." } }, { status: 500 });

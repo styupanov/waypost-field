@@ -5,6 +5,7 @@ SELECT
     t.status,
     t.started_at,
     t.ended_at,
+    t.travel_confirmation_at,
     t.current_version_id,
     v.state AS version_state,
     v.version_no,
@@ -15,6 +16,8 @@ JOIN trip_versions v
 WHERE t.id = '<trip-id>';
 
 -- Optional cache and credit invariants for the same Trip.
+-- Future derived traveled data must remain reversible by trip_version_id;
+-- temporary provider_route_cache geometry is not durable travel history.
 SELECT
     t.id,
     t.status,

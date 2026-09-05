@@ -1,5 +1,6 @@
 import "server-only";
 import { getPostgresPool } from "../db/postgres.ts";
+import { bulkInsertRouteCoverage, prepareRouteCoverage, type PreparedRouteCoverage } from "../coverage/route-coverage.ts";
 import type { ExecutableTripStatus } from "../../types/final-route.ts";
 
 export class TripLifecycleError extends Error {
@@ -93,7 +94,7 @@ export function isTripEligibleForTravelCoverage(status: LockedTrip["status"]) {
   return status === "traveled";
 }
 
-async function travelConfirmationTransaction(userId: string, tripId: string, outcome: TravelConfirmationOutcome | "undo"): Promise<TripLifecycleResult> {
+async function travelConfirmationTransaction(userId: string, tripId: string, outcome: TravelConfirmationOutcome | "undo", preparedCoverage: PreparedRouteCoverage | null = null): Promise<TripLifecycleResult> {
   const client = await getPostgresPool().connect();
   try {
     await client.query("BEGIN");
@@ -126,7 +127,12 @@ async function travelConfirmationTransaction(userId: string, tripId: string, out
     if (trip.version_state !== "finalized" || !trip.current_version_id || !trip.started_at || !trip.ended_at) {
       throw new TripLifecycleError("TRIP_LIFECYCLE_CONFLICT", "The completed trip does not have a finalized version.");
     }
-
+    if (outcome === "traveled") {
+      if (!preparedCoverage || preparedCoverage.tripVersionId !== trip.current_version_id) {
+        throw new TripLifecycleError("TRIP_LIFECYCLE_CONFLICT", "The finalized route changed while travel coverage was being prepared.");
+      }
+      await bulkInsertRouteCoverage(client, userId, trip.current_version_id, preparedCoverage.cells);
+    }
     const updated = await client.query<{ status: ExecutableTripStatus; started_at: Date; ended_at: Date; travel_confirmation_at: Date | null }>(
       outcome === "undo"
         ? "UPDATE public.trips SET status='completed_unconfirmed',travel_confirmation_at=NULL,updated_at=now() WHERE id=$1 RETURNING status,started_at,ended_at,travel_confirmation_at"
@@ -135,6 +141,7 @@ async function travelConfirmationTransaction(userId: string, tripId: string, out
     );
     if (outcome === "undo") {
       await client.query("DELETE FROM public.trip_poi_visit_confirmations WHERE user_id=$1 AND trip_version_id=$2", [userId, trip.current_version_id]);
+      await client.query("DELETE FROM public.route_coverage WHERE trip_version_id=$1", [trip.current_version_id]);
     }
     await client.query("COMMIT");
     const row = updated.rows[0];
@@ -147,8 +154,9 @@ async function travelConfirmationTransaction(userId: string, tripId: string, out
   }
 }
 
-export function confirmTripTravelOutcome(userId: string, tripId: string, outcome: TravelConfirmationOutcome) {
-  return travelConfirmationTransaction(userId, tripId, outcome);
+export async function confirmTripTravelOutcome(userId: string, tripId: string, outcome: TravelConfirmationOutcome) {
+  const preparedCoverage = outcome === "traveled" ? await prepareRouteCoverage(userId, tripId) : null;
+  return travelConfirmationTransaction(userId, tripId, outcome, preparedCoverage);
 }
 
 export function undoTripTravelConfirmation(userId: string, tripId: string) {

@@ -20,6 +20,7 @@
     "test:trip-lifecycle": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-trip-lifecycle.ts",
     "test:travel-confirmation": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-travel-confirmation.ts",
     "test:poi-visits": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-poi-visits.ts",
+    "test:route-coverage": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-route-coverage.ts",
     "calibrate:h3-route": "node --experimental-strip-types --env-file=.env.local scripts/calibrate-h3-route.ts",
     "db:smoke-finalization": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/smoke-finalization.ts",
     "db:verify-overnights": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-overnight-persistence.ts"

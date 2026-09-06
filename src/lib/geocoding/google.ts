@@ -179,3 +179,28 @@ export async function geocodeWithGoogle(
       .filter((result): result is GeocodingResult => result !== null),
   };
 }
+
+export type ReverseGeocodingResult = {
+  label: string;
+  formattedAddress: string;
+  placeId: string | null;
+};
+
+export async function reverseGeocodePoint({ latitude, longitude }: { latitude: number; longitude: number }): Promise<ReverseGeocodingResult | null> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) throw new GoogleGeocodingError("GEOCODING_NOT_CONFIGURED", 500, "Google geocoding is not configured.");
+  const url = new URL(GOOGLE_GEOCODING_URL);
+  url.searchParams.set("latlng", `${latitude},${longitude}`);
+  url.searchParams.set("key", apiKey);
+  let response: Response;
+  try { response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(5_000) }); }
+  catch { throw new GoogleGeocodingError("GEOCODING_SERVICE_ERROR", 502, "The geocoding service could not be reached."); }
+  if (!response.ok) throw new GoogleGeocodingError("GEOCODING_SERVICE_ERROR", 502, `Google geocoding returned HTTP ${response.status}.`);
+  let data: GoogleGeocodingResponse;
+  try { data = await response.json() as GoogleGeocodingResponse; }
+  catch { throw new GoogleGeocodingError("GEOCODING_SERVICE_ERROR", 502, "Google geocoding returned an invalid response."); }
+  if (data.status === "ZERO_RESULTS") return null;
+  if (data.status !== "OK") throw providerError(data.status);
+  const result = data.results?.find((item) => typeof item.formatted_address === "string");
+  return result?.formatted_address ? { label: result.formatted_address, formattedAddress: result.formatted_address, placeId: result.place_id ?? null } : null;
+}

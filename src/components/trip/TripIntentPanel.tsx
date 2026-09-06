@@ -17,6 +17,7 @@ import type {
   DraftEditAction,
   TripEndpoint,
   TripField,
+  DraftUserAttractionStop,
 } from "@/types/trip";
 import type {
   DetourTolerance,
@@ -97,6 +98,8 @@ type TripIntentPanelProps = {
   onRequestUndoTravelConfirmation: () => void;
   onConfirmUndoTravelConfirmation: () => void;
   onCancelTravelConfirmation: () => void;
+  autoBuildRequestId?: number | null;
+  initialHardUserAttractions?: DraftUserAttractionStop[];
 };
 
 class TripBuildError extends Error {
@@ -217,11 +220,15 @@ export default function TripIntentPanel({
   onRequestUndoTravelConfirmation,
   onConfirmUndoTravelConfirmation,
   onCancelTravelConfirmation,
+  autoBuildRequestId = null,
+  initialHardUserAttractions = [],
 }: TripIntentPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [isEditingTrip, setIsEditingTrip] = useState(false);
   const requestInFlight = useRef(false);
   const panelRef = useRef<HTMLElement | null>(null);
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const handledAutoBuild = useRef<number | null>(null);
   const isGenerating = plannerState.status === "generating_draft";
   const visibleDraft =
     plannerState.status === "draft_ready"
@@ -241,6 +248,12 @@ export default function TripIntentPanel({
       panelRef.current?.scrollTo({ top: 0 });
     }
   }, [isEditingTrip, visibleDraft]);
+
+  useEffect(() => {
+    if (autoBuildRequestId === null || handledAutoBuild.current === autoBuildRequestId) return;
+    handledAutoBuild.current = autoBuildRequestId;
+    formRef.current?.requestSubmit();
+  }, [autoBuildRequestId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -289,7 +302,7 @@ export default function TripIntentPanel({
           destination: resolvedDestination,
           preferences,
           ownedTripId,
-          hardUserAttractions: visibleDraft?.stops.filter((item) => item.source === "user_attraction") ?? [],
+          hardUserAttractions: visibleDraft?.stops.filter((item) => item.source === "user_attraction") ?? initialHardUserAttractions,
           existingUserOvernights: visibleDraft?.stops.filter((item) => "type" in item && item.type === "overnight" && item.source === "user") ?? [],
           previousSelectedTripDays: visibleDraft?.multiDay.selectedDays ?? null,
         }),
@@ -332,7 +345,7 @@ export default function TripIntentPanel({
       {!exploreIntent && (!visibleDraft || isEditingTrip) && finalizationState.status !== "planned" ? (
         <h1 id="trip-intent-heading">{visibleDraft ? "Edit trip" : "Plan a trip"}</h1>
       ) : null}
-      {!exploreIntent && (!visibleDraft || isEditingTrip) && finalizationState.status !== "planned" ? <form onSubmit={handleSubmit}>
+      {!exploreIntent && (!visibleDraft || isEditingTrip) && finalizationState.status !== "planned" ? <form ref={formRef} onSubmit={handleSubmit}>
         <div className={styles.endpointField}>
           <label className={styles.placeField}>
             Origin

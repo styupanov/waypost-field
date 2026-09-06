@@ -107,6 +107,7 @@ export type DraftWaypostStop = {
 
 export type DraftUserAttractionStop = Omit<DraftWaypostStop, "source"> & {
   source: "user_attraction";
+  intentRole?: "primary_anchor";
 };
 
 export type DraftAttractionStop =

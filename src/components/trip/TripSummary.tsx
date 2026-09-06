@@ -4,6 +4,7 @@ import {
   formatApproximateDuration,
 } from "@/lib/trip/formatters";
 import type { TripDraft } from "@/types/trip";
+import { countAttractionStops } from "@/lib/trip/summary";
 import type { FinalizedTripWorkspace } from "@/types/final-route";
 
 type TripSummaryProps = {
@@ -38,7 +39,7 @@ export default function TripSummary({ draft, onEditTrip, finalization }: TripSum
         </div>
         <div>
           <dt>Attraction stops</dt>
-          <dd>{draft.composition.selectedPoiCount}</dd>
+          <dd>{countAttractionStops(draft)}</dd>
         </div>
         {draft.composition.actualDetourSeconds > 0 ? (
           <div>

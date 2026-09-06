@@ -32,6 +32,8 @@
     "test:user-interests": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-user-interests.ts",
     "test:exploration-intelligence": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-exploration-intelligence.ts",
     "test:exploration-potential": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-exploration-potential.ts",
+    "test:explore-planning": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types scripts/verify-explore-planning.ts",
+    "test:product-polish": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types scripts/verify-product-polish.ts",
     "data:build-exploration-intelligence": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/build-exploration-intelligence.ts",
     "diagnose:fog-mask": "node --experimental-strip-types --env-file=.env.local scripts/diagnose-fog-mask.ts",
     "compare:routes": "node --experimental-strip-types --env-file=.env.local scripts/compare-route-geometries.ts",
@@ -40,6 +42,7 @@
     "db:verify-overnights": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-overnight-persistence.ts"
   },
   "dependencies": {
+    "@google/genai": "^2.21.0",
     "h3-js": "^4.5.0",
     "maplibre-gl": "^6.7.0",
     "next": "16.3.4",

@@ -278,9 +278,13 @@ export function suggestedVisitDuration(stops: DraftStop[]) {
 export async function composeTripDraft(
   request: DraftCompositionRequest
 ): Promise<TripDraft> {
+  const primaryAnchor = (request.hardUserAttractions ?? []).find(
+    (attraction) => attraction.intentRole === "primary_anchor"
+  );
   const skeletonLocations = [
     request.origin.coordinates,
     ...(request.stop ? [request.stop.coordinates] : []),
+    ...(primaryAnchor ? [primaryAnchor.coordinates] : []),
     request.destination.coordinates,
   ];
   const baseline = await calculateRoute(skeletonLocations);

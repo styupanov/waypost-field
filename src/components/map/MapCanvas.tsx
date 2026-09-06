@@ -645,6 +645,7 @@ export default function MapCanvas({
           "aria-label",
           `${stop.label} — ${stop.source === "waypost" ? "Waypost suggestion" : "Added by you"}`
         );
+        marker.getElement().style.cursor = "pointer";
         marker.getElement().addEventListener("mouseenter", () =>
           onPoiHoverRef.current(stop.attractionId)
         );
@@ -690,6 +691,7 @@ export default function MapCanvas({
           "aria-label",
           `${alternative.name} — Along the way`
         );
+        marker.getElement().style.cursor = "pointer";
         marker.getElement().addEventListener("mouseenter", () =>
           onPoiHoverRef.current(alternative.attractionId)
         );

@@ -183,6 +183,7 @@ function stopPersistence(stop: ItineraryStop) {
       individualDetourDistanceKm: stop.individualDetourDistanceKm,
       individualDetourDurationSeconds: stop.individualDetourDurationSeconds,
       dayIndex: stop.dayIndex ?? null,
+      intentRole: stop.source === "user_attraction" ? stop.intentRole : undefined,
     },
     settlementGeonameId: null, nightIndex: null, admin1Snapshot: null, featureCodeSnapshot: null, populationSnapshot: null, overnightMetadata: null,
   };

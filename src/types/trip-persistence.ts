@@ -19,6 +19,7 @@ export type AttractionSnapshot = {
   individualDetourDistanceKm: number;
   individualDetourDurationSeconds: number;
   dayIndex?: number | null;
+  intentRole?: "primary_anchor";
 };
 
 export type PersistedTripStop = {

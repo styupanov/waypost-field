@@ -18,6 +18,10 @@ type ValhallaResponse = {
   };
 };
 
+type ValhallaMatrixCell = { time?: unknown; distance?: unknown; from_index?: unknown; to_index?: unknown };
+type ValhallaMatrixResponse = { sources_to_targets?: ValhallaMatrixCell[][] };
+export type RouteMatrixCell = { durationSeconds: number; distanceKm: number } | null;
+
 export class RoutingServiceError extends Error {
   readonly statusCode: number;
   constructor(message: string, statusCode = 502) {
@@ -141,4 +145,38 @@ export async function calculateRoute(locations: RoutePoint[]): Promise<RouteResp
 
 export async function calculateTimedRoute(locations: RoutePoint[]): Promise<TimedRouteResponse> {
   return requestRoute(locations, true) as Promise<TimedRouteResponse>;
+}
+
+async function requestMatrix(sources: RoutePoint[], targets: RoutePoint[]): Promise<RouteMatrixCell[][]> {
+  const baseUrl = process.env.VALHALLA_URL ?? LOCAL_VALHALLA_URL;
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/sources_to_targets`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sources, targets, costing: "auto", units: "kilometers" }) });
+  } catch { throw new RoutingServiceError("The routing matrix service could not be reached.", 503); }
+  if (!response.ok) throw new RoutingServiceError("The routing matrix service rejected the request.", response.status >= 500 ? 503 : 502);
+  let data: ValhallaMatrixResponse;
+  try { data = await response.json() as ValhallaMatrixResponse; } catch { throw new RoutingServiceError("The routing matrix service returned invalid data."); }
+  if (!Array.isArray(data.sources_to_targets) || data.sources_to_targets.length !== sources.length) throw new RoutingServiceError("The routing matrix service returned an incomplete matrix.");
+  return data.sources_to_targets.map((row) => targets.map((_, targetIndex) => {
+    const cell = row?.[targetIndex];
+    return cell && isFiniteNumber(cell.time) && isFiniteNumber(cell.distance) ? { durationSeconds: cell.time, distanceKm: cell.distance } : null;
+  }));
+}
+
+export type RouteMatrixTimings = { outboundMatrixMs: number; inboundMatrixMs: number; matrixWallClockMs: number };
+
+export async function calculateReturnTripMatrix(origin: RoutePoint, destinations: RoutePoint[], timings?: RouteMatrixTimings) {
+  if (!destinations.length) return [];
+  const wallStarted = performance.now();
+  const measured = async (direction: "outboundMatrixMs" | "inboundMatrixMs", sources: RoutePoint[], targets: RoutePoint[]) => {
+    const started = performance.now();
+    try { return await requestMatrix(sources, targets); }
+    finally { if (timings) timings[direction] = performance.now() - started; }
+  };
+  const [outbound, inbound] = await Promise.all([
+    measured("outboundMatrixMs", [origin], destinations),
+    measured("inboundMatrixMs", destinations, [origin]),
+  ]);
+  if (timings) timings.matrixWallClockMs = performance.now() - wallStarted;
+  return destinations.map((_, index) => ({ outbound: outbound[0]?.[index] ?? null, inbound: inbound[index]?.[0] ?? null }));
 }

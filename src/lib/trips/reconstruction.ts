@@ -43,6 +43,7 @@ function reconstructedStop(stop: PersistedTripStop): ItineraryStop {
     individualDetourDistanceKm: snapshot.individualDetourDistanceKm,
     individualDetourDurationSeconds: snapshot.individualDetourDurationSeconds,
     dayIndex: snapshot.dayIndex ?? null,
+    intentRole: snapshot.intentRole,
   };
   return stop.source === "waypost" ? { ...shared, source: "waypost" } : { ...shared, source: "user_attraction" };
 }

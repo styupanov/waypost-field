@@ -9,6 +9,7 @@ import LocalSignInDialog from "@/components/trip/LocalSignInDialog";
 import MyTripsDrawer from "@/components/trip/MyTripsDrawer";
 import UserInterestsDialog from "@/components/account/UserInterestsDialog";
 import TripIntentPanel from "@/components/trip/TripIntentPanel";
+import ExplorePlanningPanel from "@/components/trip/ExplorePlanningPanel";
 import type {
   Coordinates,
   DraftEditAction,
@@ -17,6 +18,7 @@ import type {
   TripDraft,
   TripEndpoint,
   TripField,
+  DraftUserAttractionStop,
 } from "@/types/trip";
 import { isAttractionStop, isOvernightStop } from "@/types/trip";
 import {
@@ -28,6 +30,7 @@ import {
   type DrivingPace,
 } from "@/types/preferences";
 import { calculateTripDayRecommendation } from "@/lib/trip/multi-day";
+import { applyReverseGeocodeLabel, reverseGeocodeResponseIsCurrent } from "@/lib/trip/map-point-label";
 import { resolveDisplayedTripRoute } from "@/lib/trip/display-route";
 import { isCurrentWorkspace, resolveWorkspaceMode, showsTripWorkspace, workspaceUrl, type WorkspaceDestination } from "@/lib/trip/workspace-mode";
 import type { PersonalCoverageBoundsResponse } from "@/types/coverage";
@@ -35,6 +38,7 @@ import { DEFAULT_PERSONAL_MAP_LAYERS, personalHistoryLayerActive } from "@/lib/p
 import { createUnexploredTerritorySelection, selectionIsExplored } from "@/lib/coverage/unexplored-territory";
 import type { UnexploredTerritorySelection } from "@/types/unexplored-territory";
 import type { ExploreIntent } from "@/types/explore-intent";
+import type { ExploreTripIdea } from "@/types/explore-planning";
 import { exploreIntentFromSelection, serializeExploreIntent } from "@/lib/trip/explore-intent";
 import { useAreaExplorationIntelligence } from "@/lib/exploration-intelligence/use-area-intelligence";
 import AreaIntelligenceSummary from "@/components/map/AreaIntelligenceSummary";
@@ -96,6 +100,7 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
   );
   const [findingAlternatives, setFindingAlternatives] = useState(false);
   const editRequestInFlight = useRef(false);
+  const reverseGeocodeSequence = useRef<Record<TripField, number>>({ origin: 0, stop: 0, destination: 0 });
   const previewRequestInFlight = useRef(false);
   const tripLoadSequence = useRef(0);
   const [finalPreview, setFinalPreview] = useState<FinalRoutePreviewState>({ status: "idle" });
@@ -119,6 +124,8 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
     preferredCategories: [],
     excludedCategories: [],
   }));
+  const [autoBuildRequestId, setAutoBuildRequestId] = useState<number | null>(null);
+  const [explorePrimaryAnchor, setExplorePrimaryAnchor] = useState<DraftUserAttractionStop | null>(null);
   const workspaceMode = resolveWorkspaceMode({ authenticated: Boolean(sessionUser), requestedTripId, requestedMode });
   const activeExploreIntent = workspaceMode === "planner" ? exploreIntent : null;
   const intelligenceArea = workspaceMode === "personal_map" && unexploredSelection
@@ -323,6 +330,20 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
     setPickingMode(null);
 
     markDraftDirty();
+
+    const requestSequence = ++reverseGeocodeSequence.current[field];
+    void fetch("/api/geocode/reverse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ latitude: coordinates.lat, longitude: coordinates.lon }),
+    }).then(async (response) => response.ok ? response.json() as Promise<{ result: { label: string } | null }> : { result: null })
+      .then(({ result }) => {
+        if (!result || !reverseGeocodeResponseIsCurrent(reverseGeocodeSequence.current[field], requestSequence)) return;
+        const enrich = (current: TripEndpoint): TripEndpoint => applyReverseGeocodeLabel(current, coordinates, result.label);
+        if (field === "origin") setOrigin(enrich);
+        else if (field === "destination") setDestination(enrich);
+        else setStop((current) => current ? enrich(current) : current);
+      }).catch(() => undefined);
   }
 
   function addStop() {
@@ -632,6 +653,7 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
       excludedCategories: [],
     });
     setIsMyTripsOpen(false);
+    setExplorePrimaryAnchor(null);
   }
 
   function startNewTrip() {
@@ -659,6 +681,41 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
   function clearExploreIntent() {
     setUnexploredSelection(null);
     router.replace("/?mode=planner");
+  }
+
+  function buildExploreIdea(idea: ExploreTripIdea, exploreOrigin: TripEndpoint, _days: number, pace: DrivingPace, interests: InterestCategory[]) {
+    if (!exploreOrigin.coordinates) return;
+    tripLoadSequence.current += 1;
+    clearTripContext();
+    setOrigin(exploreOrigin);
+    setDestination({
+      ...exploreOrigin,
+    });
+    setExplorePrimaryAnchor({
+      source: "user_attraction",
+      intentRole: "primary_anchor",
+      attractionId: idea.destination.attractionId,
+      label: idea.destination.name,
+      coordinates: { lat: idea.destination.latitude, lon: idea.destination.longitude },
+      category: idea.destination.rawCategory,
+      interestCategory: idea.destination.interestCategory,
+      rating: idea.destination.rating,
+      reviewCount: idea.destination.reviewCount,
+      duration: idea.destination.duration,
+      visitDuration: idea.destination.visitDuration,
+      routeProgress: 0.5,
+      personalizedScore: idea.destination.qualityScore,
+      individualDetourDistanceKm: 0,
+      individualDetourDurationSeconds: 0,
+    });
+    setPreferences({
+      ...DEFAULT_TRIP_PREFERENCES,
+      preferredCategories: [...interests],
+      excludedCategories: [],
+      drivingPace: pace,
+    });
+    setAutoBuildRequestId((current) => (current ?? 0) + 1);
+    router.push("/?mode=planner");
   }
 
   function enterPersonalMap() {
@@ -706,7 +763,7 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
         originCoordinates={tripWorkspaceVisible ? origin.coordinates : null}
         stopCoordinates={tripWorkspaceVisible && !activeExploreIntent ? stop?.coordinates ?? null : null}
         destinationCoordinates={tripWorkspaceVisible && !activeExploreIntent ? destination.coordinates : null}
-        pickingMode={tripWorkspaceVisible && !activeExploreIntent ? pickingMode : null}
+        pickingMode={tripWorkspaceVisible ? (activeExploreIntent ? (pickingMode === "origin" ? "origin" : null) : pickingMode) : null}
         activePoiId={tripWorkspaceVisible && !activeExploreIntent ? activePoiId : null}
         activeNightIndex={tripWorkspaceVisible && !activeExploreIntent ? activeNightIndex : null}
         focusCoordinates={tripWorkspaceVisible && !activeExploreIntent ? mapFocusCoordinates : null}
@@ -728,7 +785,17 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
         onPoiSelect={selectPoi}
         onOvernightSelect={(nightIndex) => { setActivePoiId(null); setActiveNightIndex(nightIndex); }}
       />
-      {tripWorkspaceVisible ? <TripIntentPanel
+      {tripWorkspaceVisible && activeExploreIntent ? <ExplorePlanningPanel
+        intent={activeExploreIntent}
+        origin={origin}
+        areaIntelligence={areaIntelligence}
+        pickingOrigin={pickingMode === "origin"}
+        onOriginInput={(value) => updateEndpointInput("origin", value)}
+        onPickOrigin={() => setPickingMode((current) => current === "origin" ? null : "origin")}
+        onOriginResolved={(coordinates, label) => resolveEndpointCoordinates("origin", coordinates, label)}
+        onClear={clearExploreIntent}
+        onBuildIdea={buildExploreIdea}
+      /> : tripWorkspaceVisible ? <TripIntentPanel
         origin={origin}
         stop={activeExploreIntent ? null : stop}
         destination={activeExploreIntent ? emptyExploreDestination : destination}
@@ -796,6 +863,8 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
         onRequestUndoTravelConfirmation={() => setTravelConfirmationState({ status: "confirming_undo" })}
         onConfirmUndoTravelConfirmation={() => void updateTravelConfirmation("undo")}
         onCancelTravelConfirmation={() => setTravelConfirmationState({ status: "idle" })}
+        autoBuildRequestId={autoBuildRequestId}
+        initialHardUserAttractions={explorePrimaryAnchor ? [explorePrimaryAnchor] : []}
       /> : null}
       {tripWorkspaceVisible && !activeExploreIntent && visibleDraft && finalizationState.status !== "planned" && visibleDraft.alternatives.length > 0 ? (
         <AlongTheWay

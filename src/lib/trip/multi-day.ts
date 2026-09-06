@@ -37,5 +37,14 @@ export function calculateTripDayRecommendation(
   const selectedDays = requested && options.includes(requested)
     ? requested
     : options.reduce((best, value) => Math.abs(value - (requested ?? recommendedDays)) < Math.abs(best - (requested ?? recommendedDays)) ? value : best, options[0]);
-  return { isMultiDay: baselineDurationSeconds > MULTI_DAY_THRESHOLD_SECONDS, drivingPace: preferences.drivingPace, recommendedDays, selectedDays, nights: Math.max(0, selectedDays - 1), baselineDrivingHours: baselineDurationSeconds / 3600, dayOptions: options };
+  const isMultiDay = baselineDurationSeconds > MULTI_DAY_THRESHOLD_SECONDS;
+  return {
+    isMultiDay,
+    drivingPace: preferences.drivingPace,
+    recommendedDays: isMultiDay ? recommendedDays : 1,
+    selectedDays: isMultiDay ? selectedDays : 1,
+    nights: isMultiDay ? Math.max(0, selectedDays - 1) : 0,
+    baselineDrivingHours: baselineDurationSeconds / 3600,
+    dayOptions: isMultiDay ? options : [1],
+  };
 }

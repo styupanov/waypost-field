@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./TripIntentPanel.module.css";
+import AttractionEnrichmentCard from "@/components/trip/AttractionEnrichmentCard";
 import { isAttractionStop, isOvernightStop, type Coordinates, type DraftAttractionStop, type DraftDayBoundary, type DraftOvernightStop, type DraftStop, type TripDraft } from "@/types/trip";
 
 type Props = {
@@ -15,13 +16,15 @@ type Props = {
   onChangeOvernight: (night: number, id: number) => Promise<void>;
 };
 
-function Attraction({ stop, active, replacing, props, cardRef }: { stop: DraftAttractionStop; active: boolean; replacing: boolean; props: Props; cardRef: (node: HTMLLIElement | null) => void }) {
-  return <li className={`${styles.routeStop} ${active ? styles.poiActive : ""} ${replacing ? styles.replacementTarget : ""}`} ref={cardRef} onMouseEnter={() => props.onPoiHover(stop.attractionId)} onMouseLeave={() => props.onPoiHover(null)}>
+function Attraction({ stop, selected, emphasized, replacing, props, cardRef }: { stop: DraftAttractionStop; selected: boolean; emphasized: boolean; replacing: boolean; props: Props; cardRef: (node: HTMLLIElement | null) => void }) {
+  return <li className={`${styles.routeStop} ${styles.selectableRouteStop} ${emphasized ? styles.poiActive : ""} ${replacing ? styles.replacementTarget : ""}`} ref={cardRef} onClick={() => props.onPoiSelect(stop.attractionId)} onMouseEnter={() => props.onPoiHover(stop.attractionId)} onMouseLeave={() => props.onPoiHover(null)}>
     <span className={`${styles.routeNode} ${stop.source === "waypost" ? styles.waypostNode : styles.userAttractionNode}`} aria-hidden="true" />
     <div className={styles.routeStopContent}>
-      <button className={styles.poiNameButton} type="button" onClick={() => props.onPoiSelect(stop.attractionId)}>{stop.label}</button>
+      <button className={styles.poiNameButton} type="button" onClick={(event) => { event.stopPropagation(); props.onPoiSelect(stop.attractionId); }}>{stop.label}</button>
       <small>{stop.source === "waypost" ? "Waypost suggestion" : "Added by you"}{stop.duration ? ` · ${stop.duration} visit` : ""}</small>
-      {!props.readOnly ? <div className={styles.routeStopActions}>
+      <small>{stop.category} · {stop.rating.toFixed(1)} · {stop.reviewCount.toLocaleString()} reviews</small>
+      {selected ? <AttractionEnrichmentCard attractionId={stop.attractionId} /> : null}
+      {!props.readOnly ? <div className={styles.routeStopActions} onClick={(event) => event.stopPropagation()}>
         <button type="button" disabled={props.isEditing} onClick={() => props.onStartReplacement(stop.attractionId)}>Replace</button>
         <button type="button" disabled={props.isEditing} onClick={() => props.onRemove(stop.attractionId)}>Remove</button>
       </div> : null}
@@ -81,7 +84,7 @@ export default function RouteStops(props: Props) {
   const [changingNight, setChangingNight] = useState<number | null>(null);
   const activeAttractionDay = props.activePoiId === null ? null : [...groups.entries()].find(([, stops]) => stops.some((item) => isAttractionStop(item) && item.attractionId === props.activePoiId))?.[0] ?? null;
   useEffect(() => { if (props.activePoiId !== null) refs.current.get(props.activePoiId)?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [props.activePoiId]);
-  const attraction = (stop: DraftAttractionStop) => <Attraction key={`${stop.source}-${stop.attractionId}`} stop={stop} active={emphasized === stop.attractionId} replacing={props.replacementTargetId === stop.attractionId} props={props} cardRef={(node) => { if (node) refs.current.set(stop.attractionId, node); else refs.current.delete(stop.attractionId); }} />;
+  const attraction = (stop: DraftAttractionStop) => <Attraction key={`${stop.source}-${stop.attractionId}`} stop={stop} selected={props.activePoiId === stop.attractionId} emphasized={emphasized === stop.attractionId} replacing={props.replacementTargetId === stop.attractionId} props={props} cardRef={(node) => { if (node) refs.current.set(stop.attractionId, node); else refs.current.delete(stop.attractionId); }} />;
 
   if (!draft.multiDay.isMultiDay || !draft.dayPlans.length) {
     return <section className={styles.routeEditor} aria-labelledby="your-route-heading"><h3 id="your-route-heading">Your route</h3><ol>

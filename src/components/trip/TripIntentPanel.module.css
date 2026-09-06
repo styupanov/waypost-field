@@ -28,6 +28,30 @@
 .exploreContext span { color: #475569; font-size: 12px; }
 .exploreContext button { justify-self: start; padding: 0; border: 0; background: transparent; color: #1d4ed8; cursor: pointer; }
 
+.exploreForm { display: grid; gap: 14px; }
+.exploreForm fieldset { min-width: 0; margin: 0; padding: 10px; border: 1px solid #e2e8f0; border-radius: 7px; }
+.exploreForm legend { padding: 0 4px; color: #4b5563; font-size: 12px; font-weight: 650; }
+.exploreForm small { display: block; margin-top: 7px; color: #64748b; }
+.exploreNotice { margin: 0; color: #475569; font-size: 13px; line-height: 1.4; }
+.ideaList { display: grid; gap: 10px; }
+.ideaCard { display: grid; gap: 5px; padding: 11px; border: 1px solid #dbe4ef; border-radius: 8px; background: #fff; }
+.ideaCard h2, .ideaCard p { margin: 0; }
+.ideaCard h2 { font-size: 15px; }
+.ideaCard p { color: #475569; font-size: 12px; }
+
+.enrichmentCard { display: grid; gap: 8px; min-width: 0; margin-top: 7px; padding: 9px 0 2px; border-top: 1px solid #dbe3ee; font-size: 11px; line-height: 1.4; }
+.enrichmentCard section { display: grid; min-width: 0; gap: 3px; }
+.enrichmentCard p, .enrichmentCard ul { margin: 0; }
+.enrichmentDescription { color: #334155; }
+.enrichmentLabel { color: #64748b; font-size: 9px; font-weight: 750; letter-spacing: 0.07em; text-transform: uppercase; }
+.enrichmentHighlights { display: flex !important; flex-flow: row wrap; gap: 4px; min-width: 0; padding: 0 !important; list-style: none; }
+.enrichmentPractical { display: flex; gap: 5px; color: #64748b; font-size: 10px; }
+.enrichmentLinks { display: flex; flex-wrap: wrap; gap: 5px 12px; }
+.enrichmentLinks a { color: #1d4ed8; cursor: pointer; font-weight: 650; text-decoration: none; }
+.enrichmentLinks a:hover { text-decoration: underline; }
+.enrichmentAttribution { color: #94a3b8 !important; font-size: 9px !important; }
+.enrichmentLoading, .enrichmentUnavailable { display: block; margin-top: 6px; color: #64748b; }
+
 .preferences {
   padding: 10px;
   border: 1px solid #e2e8f0;
@@ -335,6 +359,30 @@
   line-height: 1.35;
   text-align: left;
 }
+
+.selectableRouteStop { cursor: pointer; transition: background-color 120ms ease, box-shadow 120ms ease; }
+.selectableRouteStop:hover { background: #f8fafc; box-shadow: inset 0 0 0 1px #dbe3ee; }
+
+.routeEditor .enrichmentHighlights li {
+  position: static;
+  display: inline-flex;
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 0;
+  grid-template-columns: none;
+  gap: 0;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #e9edf7;
+  color: #334155;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.routeEditor .enrichmentHighlights li::after { display: none; }
 
 .routeStopActions {
   display: flex;

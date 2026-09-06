@@ -24,8 +24,10 @@ async function fixture(userId: string, cells: string[]) {
 
 try {
   const baseA = latLngToCell(35.2271, -80.8431, 10); const baseB = latLngToCell(35.3, -80.7, 10);
-  assert.deepEqual([[5.49, 5], [5.5, 6], [6.99, 6], [7, 7], [8.49, 7], [8.5, 8], [9.99, 8], [10, 9], [11.49, 9], [11.5, 10]].map(([zoom, expected]) => coverageDisplayResolution(zoom) === expected), Array(10).fill(true));
-  for (const resolution of [9, 8, 7, 6, 5]) assert.equal(deriveDisplayCells([baseA], resolution)[0], cellToParent(baseA, resolution));
+  const displayPolicyCases = [[4.9, 4], [5.4999, 4], [5.5, 5], [6.9999, 5], [7, 6], [8.4999, 6], [8.5, 7], [9.9999, 7], [10, 8], [11.4999, 8], [11.5, 9], [16, 9]];
+  assert.deepEqual(displayPolicyCases.map(([zoom, expected]) => coverageDisplayResolution(zoom) === expected), Array(displayPolicyCases.length).fill(true));
+  assert.ok(displayPolicyCases.every(([, resolution]) => resolution >= 4 && resolution <= 9));
+  for (const resolution of [9, 8, 7, 6, 5, 4]) assert.equal(deriveDisplayCells([baseA], resolution)[0], cellToParent(baseA, resolution));
   assert.equal(deriveDisplayCells([baseA, baseA], 7).length, 1);
   const visible = buildPersonalCoverageResponse([baseA, baseA, baseB], 7, { west: -81, south: 35, east: -80.5, north: 35.5 }); assert.equal(visible.baseCellCount, 2); assert.ok(visible.cells.length > 0); assert.ok(visible.cells.every(cell => getResolution(cell) === visible.displayResolution));
   const hidden = buildPersonalCoverageResponse([baseA], 12, { west: -105, south: 39, east: -104, north: 40 }); assert.equal(hidden.returnedCellCount, 0);
@@ -36,7 +38,7 @@ try {
   const owner = await user(); const other = await user(); const emptyUser = await user(); const first = await fixture(owner, [baseA, baseB]); const second = await fixture(owner, [baseA]); await fixture(other, [latLngToCell(39.7392, -104.9903, 10)]);
   const aggregate = await loadPersonalBaseCoverageCells(owner); assert.deepEqual(aggregate, [baseA, baseB].sort()); assert.equal((await loadPersonalBaseCoverageCells(other)).length, 1);
   const before = (await pool.query("SELECT (SELECT balance FROM trip_credit_accounts WHERE user_id=$1) balance,(SELECT count(*)::int FROM trip_poi_visit_confirmations WHERE user_id=$1) poi_count", [owner])).rows[0];
-  const response = await coverageResponseForUser(owner, new Request("http://local/api/map/coverage?zoom=12&west=-81&south=35&east=-80&north=36")); assert.equal(response.status, 200); const body = await response.json(); const serialized = JSON.stringify(body); assert.equal(body.baseCellCount, 2); assert.equal(body.returnedCellCount, 2); assert.ok(!serialized.includes("user_id") && !serialized.includes("trip_version_id"));
+  const response = await coverageResponseForUser(owner, new Request("http://local/api/map/coverage?zoom=12&west=-81&south=35&east=-80&north=36")); assert.equal(response.status, 200); const body = await response.json(); const serialized = JSON.stringify(body); assert.equal(body.baseCellCount, 2); assert.equal(body.displayResolution, 9); assert.ok(body.returnedCellCount > 0); assert.ok(!serialized.includes("user_id") && !serialized.includes("trip_version_id"));
   const emptyResponse = await coverageResponseForUser(emptyUser, new Request("http://local/api/map/coverage?zoom=7&west=-125&south=24&east=-66&north=50")); assert.equal(emptyResponse.status, 200); assert.equal((await emptyResponse.json()).returnedCellCount, 0);
   const invalidResponse = await coverageResponseForUser(owner, new Request("http://local/api/map/coverage?zoom=99&west=-81&south=35&east=-80&north=36")); assert.equal(invalidResponse.status, 400);
   await pool.query("DELETE FROM route_coverage WHERE trip_version_id=$1", [first.versionId]); assert.deepEqual(await loadPersonalBaseCoverageCells(owner), [baseA]);

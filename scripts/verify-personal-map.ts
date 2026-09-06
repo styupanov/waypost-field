@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { coverageBoundsResponseForUser } from "../src/lib/coverage/coverage-bounds-response.ts";
 import { PERSONAL_MAP_COVERAGE_STYLE, TRIP_COVERAGE_STYLE, coverageStyleForMode } from "../src/lib/coverage/coverage-style.ts";
 import { getPostgresPool } from "../src/lib/db/postgres.ts";
@@ -18,8 +19,12 @@ try {
   assert.deepEqual(coverageStyleForMode(true), PERSONAL_MAP_COVERAGE_STYLE);
   assert.deepEqual(coverageStyleForMode(false), TRIP_COVERAGE_STYLE);
   assert.equal(PERSONAL_MAP_COVERAGE_STYLE.fillOpacity, 0);
-  assert.equal(PERSONAL_MAP_COVERAGE_STYLE.outlineOpacity, 0);
-  assert.ok(TRIP_COVERAGE_STYLE.fillOpacity > 0 && TRIP_COVERAGE_STYLE.outlineOpacity > 0);
+  assert.ok(TRIP_COVERAGE_STYLE.fillOpacity > 0);
+  const mapSource = readFileSync(new URL("../src/components/map/MapCanvas.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(mapSource, /waypost-personal-coverage-outline|COVERAGE_OUTLINE_LAYER_ID/);
+  assert.match(mapSource, /waypost-unexplored-selection-outline/);
+  assert.match(mapSource, /waypost-explore-area-outline/);
+  assert.match(mapSource, /waypost-exploration-potential-gold/);
 
   const trip = (await pool.query<{ user_id: string; status: string }>("SELECT user_id,status FROM public.trips WHERE id=$1", [denverTripId])).rows[0];
   assert.ok(trip);

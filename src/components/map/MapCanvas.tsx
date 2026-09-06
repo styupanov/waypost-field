@@ -21,6 +21,8 @@ import type { TraveledRouteHistoryResponse, VisitedPlacesResponse } from "@/type
 import type { UnexploredTerritorySelection } from "@/types/unexplored-territory";
 import type { ExploreIntent } from "@/types/explore-intent";
 import { exploreIntentBoundary } from "@/lib/trip/explore-intent";
+import type { ExplorationPotentialResponse } from "@/types/exploration-potential";
+import { unexploredPotentialPointGeoJSON } from "@/lib/exploration-potential/map-cells";
 
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
@@ -59,7 +61,6 @@ const ROUTE_SOURCE_ID = "route";
 const ROUTE_LAYER_ID = "route-line";
 const COVERAGE_SOURCE_ID = "waypost-personal-coverage";
 const COVERAGE_FILL_LAYER_ID = "waypost-personal-coverage-fill";
-const COVERAGE_OUTLINE_LAYER_ID = "waypost-personal-coverage-outline";
 const FOG_SOURCE_ID = "waypost-personal-fog";
 const FOG_FILL_LAYER_ID = "waypost-personal-fog-fill";
 const FOG_FILL_COLOR = "#17201d";
@@ -77,6 +78,33 @@ const UNEXPLORED_SELECTION_OUTLINE_LAYER_ID = "waypost-unexplored-selection-outl
 const EXPLORE_AREA_SOURCE_ID = "waypost-explore-area";
 const EXPLORE_AREA_FILL_LAYER_ID = "waypost-explore-area-fill";
 const EXPLORE_AREA_OUTLINE_LAYER_ID = "waypost-explore-area-outline";
+const POTENTIAL_SOURCE_ID = "waypost-exploration-potential-points";
+const POTENTIAL_GOLD_LAYER_ID = "waypost-exploration-potential-gold";
+const POTENTIAL_VISUAL_THRESHOLD = 0.24;
+const POTENTIAL_GLOW_RADIUS: maplibregl.ExpressionSpecification = ["interpolate", ["linear"], ["zoom"], 3, 28, 5, 24, 7, 19, 9, 15, 12, 11, 15, 8];
+const POTENTIAL_GLOW_OPACITY: maplibregl.ExpressionSpecification = ["interpolate", ["linear"], ["*", ["get", "intensity"], ["get", "intensity"]], POTENTIAL_VISUAL_THRESHOLD * POTENTIAL_VISUAL_THRESHOLD, 0, 0.25, 0.1, 0.56, 0.23, 1, 0.42];
+
+function clearExplorationPotential(map: maplibregl.Map) {
+  const source = map.getSource(POTENTIAL_SOURCE_ID);
+  if (source) (source as maplibregl.GeoJSONSource).setData(EMPTY_COVERAGE);
+}
+
+function removeExplorationPotential(map: maplibregl.Map) {
+  if (map.getLayer(POTENTIAL_GOLD_LAYER_ID)) map.removeLayer(POTENTIAL_GOLD_LAYER_ID);
+  if (map.getSource(POTENTIAL_SOURCE_ID)) map.removeSource(POTENTIAL_SOURCE_ID);
+}
+
+function renderExplorationPotential(map: maplibregl.Map, data: GeoJSON.FeatureCollection<GeoJSON.Point>) {
+  const source = map.getSource(POTENTIAL_SOURCE_ID);
+  if (source) (source as maplibregl.GeoJSONSource).setData(data);
+  else map.addSource(POTENTIAL_SOURCE_ID, { type: "geojson", data });
+  const before = map.getLayer(HISTORY_ROUTE_LAYER_ID) ? HISTORY_ROUTE_LAYER_ID : map.getLayer(VISITED_PLACES_LAYER_ID) ? VISITED_PLACES_LAYER_ID : map.getLayer(UNEXPLORED_SELECTION_FILL_LAYER_ID) ? UNEXPLORED_SELECTION_FILL_LAYER_ID : map.getLayer(ROUTE_LAYER_ID) ? ROUTE_LAYER_ID : undefined;
+  if (!map.getLayer(POTENTIAL_GOLD_LAYER_ID)) map.addLayer({
+    id: POTENTIAL_GOLD_LAYER_ID, type: "circle", source: POTENTIAL_SOURCE_ID,
+    filter: [">", ["get", "intensity"], POTENTIAL_VISUAL_THRESHOLD],
+    paint: { "circle-radius": POTENTIAL_GLOW_RADIUS, "circle-color": "#f3dfaa", "circle-blur": 1, "circle-opacity": POTENTIAL_GLOW_OPACITY },
+  }, before);
+}
 
 function renderPersonalCoverage(map: maplibregl.Map, cells: string[], fog: FogMaskFeature, personalMapMode: boolean) {
   const coverageStyle = coverageStyleForMode(personalMapMode);
@@ -88,10 +116,6 @@ function renderPersonalCoverage(map: maplibregl.Map, cells: string[], fog: FogMa
   if (!map.getLayer(COVERAGE_FILL_LAYER_ID)) map.addLayer({
     id: COVERAGE_FILL_LAYER_ID, type: "fill", source: COVERAGE_SOURCE_ID,
     paint: { "fill-color": "#5f8f78", "fill-opacity": coverageStyle.fillOpacity },
-  }, beforeRoute);
-  if (!map.getLayer(COVERAGE_OUTLINE_LAYER_ID)) map.addLayer({
-    id: COVERAGE_OUTLINE_LAYER_ID, type: "line", source: COVERAGE_SOURCE_ID,
-    paint: { "line-color": "#315f4b", "line-width": 0.7, "line-opacity": coverageStyle.outlineOpacity },
   }, beforeRoute);
   const fogSource = map.getSource(FOG_SOURCE_ID);
   if (fogSource) (fogSource as maplibregl.GeoJSONSource).setData(fog);
@@ -262,6 +286,7 @@ export default function MapCanvas({
   const historyRouteRequestSequence = useRef(0);
   const visitedPlacesRequestSequence = useRef(0);
   const personalCoverageSnapshot = useRef<{ displayResolution: number; cells: string[] } | null>(null);
+  const potentialRequestSequence = useRef(0);
 
   useEffect(() => {
     onPoiHoverRef.current = onPoiHover;
@@ -316,14 +341,19 @@ export default function MapCanvas({
   useEffect(() => {
     const mapInstance = map.current;
     if (!mapInstance) return;
+    if (!personalMapMode) {
+      removeExplorationPotential(mapInstance);
+    }
     if (!personalCoverageEnabled) {
       const source = mapInstance.getSource(COVERAGE_SOURCE_ID);
       if (source) (source as maplibregl.GeoJSONSource).setData(EMPTY_COVERAGE);
       const fogSource = mapInstance.getSource(FOG_SOURCE_ID);
       if (fogSource) (fogSource as maplibregl.GeoJSONSource).setData(EMPTY_FOG);
+      removeExplorationPotential(mapInstance);
       return;
     }
     let controller: AbortController | null = null;
+    let potentialController: AbortController | null = null;
     let disposed = false;
     const loadCoverage = async () => {
       controller?.abort();
@@ -346,6 +376,22 @@ export default function MapCanvas({
           personalCoverageSnapshot.current = { displayResolution: coverage.displayResolution, cells: coverage.cells };
           onPersonalCoverageRendered(coverage.displayResolution, coverage.cells);
           renderPersonalCoverage(mapInstance, coverage.cells, buildFogMask({ bounds, revealedCells: coverage.cells }), personalMapMode);
+          clearExplorationPotential(mapInstance);
+          if (personalMapMode) {
+            potentialController?.abort(); potentialController = new AbortController();
+            const potentialSequence = ++potentialRequestSequence.current;
+            const potentialParams = new URLSearchParams({ ...Object.fromEntries(Object.entries(bounds).map(([key, value]) => [key, String(value)])), resolution: String(coverage.displayResolution) });
+            try {
+              const potentialResponse = await fetch(`/api/map/exploration/potential?${potentialParams}`, { signal: potentialController.signal });
+              if (!potentialResponse.ok) return;
+              const potential = await potentialResponse.json() as ExplorationPotentialResponse;
+              if (!disposed && potentialSequence === potentialRequestSequence.current && potential.resolution === coverage.displayResolution) {
+                renderExplorationPotential(mapInstance, unexploredPotentialPointGeoJSON(potential.cells, coverage.cells));
+              }
+            } catch (error) {
+              if (!(error instanceof DOMException && error.name === "AbortError")) console.error("Exploration potential could not be refreshed.");
+            }
+          }
         }
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) console.error("Personal coverage could not be refreshed.");
@@ -358,6 +404,7 @@ export default function MapCanvas({
     return () => {
       disposed = true;
       controller?.abort();
+      potentialController?.abort();
       mapInstance.off("moveend", handleMoveEnd);
       mapInstance.off("load", handleLoad);
     };
@@ -478,11 +525,6 @@ export default function MapCanvas({
       COVERAGE_FILL_LAYER_ID,
       "fill-opacity",
       coverageStyle.fillOpacity
-    );
-    if (mapInstance.getLayer(COVERAGE_OUTLINE_LAYER_ID)) mapInstance.setPaintProperty(
-      COVERAGE_OUTLINE_LAYER_ID,
-      "line-opacity",
-      coverageStyle.outlineOpacity
     );
   }, [personalMapMode]);
 

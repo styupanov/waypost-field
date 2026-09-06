@@ -82,7 +82,7 @@ try {
   const representative: Record<string, unknown> = {};
   for (const [name, latitude, longitude] of [["Nashville", 36.1627, -86.7816], ["Washington", 38.9072, -77.0369], ["Denver", 39.7392, -104.9903]] as const) {
     representative[name] = {};
-    for (const resolution of [5, 7, 8, 10]) {
+    for (const resolution of [4, 5, 7, 8, 10]) {
       const h3Index = latLngToCell(latitude, longitude, resolution); const samples: number[] = []; let result;
       for (let run = 0; run < 3; run += 1) { const started = performance.now(); result = await getAreaExplorationIntelligence({ userId: genericUser, h3Index, resolution }); samples.push(Math.round((performance.now() - started) * 100) / 100); }
       (representative[name] as Record<string, unknown>)[`res${resolution}`] = { totalPlaceCount: result?.totalPlaceCount, categoryBreakdown: result?.categoryBreakdown, latencyMs: samples };

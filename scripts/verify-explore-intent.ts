@@ -26,12 +26,21 @@ assert.equal(parseExploreIntent({ intent: "explore", area: intent.h3Index, areaR
 assert.equal(parseExploreIntent({ intent: "other", area: intent.h3Index, areaRes: "8", lat: "36", lng: "-86" }), null);
 const differentResolution = latLngToCell(36.1, -86.8, 9);
 assert.equal(parseExploreIntent({ intent: "explore", area: differentResolution, areaRes: "8", lat: "36.1", lng: "-86.8" }), null);
+for (const resolution of [4, 10]) {
+  const compatibleCell = latLngToCell(36.1, -86.8, resolution);
+  assert.equal(parseExploreIntent({ intent: "explore", area: compatibleCell, areaRes: String(resolution), lat: "36.1", lng: "-86.8" })?.resolution, resolution);
+}
+for (const resolution of [3, 11]) {
+  const unsupportedCell = latLngToCell(36.1, -86.8, resolution);
+  assert.equal(parseExploreIntent({ intent: "explore", area: unsupportedCell, areaRes: String(resolution), lat: "36.1", lng: "-86.8" }), null);
+}
 
 assert.equal(resolveWorkspaceMode({ authenticated: true, requestedTripId: null, requestedMode: "planner" }), "planner");
 assert.equal(resolveWorkspaceMode({ authenticated: true, requestedTripId: "trip-id", requestedMode: "planner" }), "trip");
 const plannerSource = readFileSync(new URL("../src/components/trip/TripPlanner.tsx", import.meta.url), "utf8");
 const mapSource = readFileSync(new URL("../src/components/map/MapCanvas.tsx", import.meta.url), "utf8");
 assert.match(plannerSource, /Explore this area/); assert.match(plannerSource, /router\.push\(`\/\?\$\{serializeExploreIntent/);
+assert.match(mapSource, /waypost-explore-area-outline/);
 assert.match(plannerSource, /router\.replace\("\/\?mode=planner"\)/); assert.match(mapSource, /waypost-explore-area/);
 const navigationBody = plannerSource.slice(plannerSource.indexOf("function exploreSelectedArea"), plannerSource.indexOf("function clearExploreIntent"));
 for (const forbidden of ["/api/route", "/api/geocode", "/api/trips", "/api/credits", "fetch("]) assert.equal(navigationBody.includes(forbidden), false);

@@ -6,6 +6,7 @@ type FogGeometry = ReturnType<typeof buildFogMask>["geometry"];
 
 const bounds = { west: -80.2, south: 35, east: -79.8, north: 35.4 };
 const centerRes5 = latLngToCell(35.2, -80, 5);
+const centerRes4 = latLngToCell(35.2, -80, 4);
 const centerRes10 = latLngToCell(35.2, -80, 10);
 
 function polygons(geometry: FogGeometry) {
@@ -33,6 +34,7 @@ assert.deepEqual(empty.geometry, { type: "Polygon", coordinates: [[[-80.2, 35], 
 
 for (const cells of [
   [centerRes5],
+  [centerRes4],
   [centerRes10],
   [latLngToCell(35.08, -80.12, 9), latLngToCell(35.32, -79.88, 9)],
   gridDisk(latLngToCell(35.2, -80, 8), 1),
@@ -45,8 +47,10 @@ for (const cells of [
 }
 
 const coarse = buildFogMask({ bounds, revealedCells: [centerRes5] });
+const regional = buildFogMask({ bounds, revealedCells: [centerRes4] });
 const precise = buildFogMask({ bounds, revealedCells: [centerRes10] });
 assert.ok(polygons(coarse.geometry)[0].length > 1, "A contained res5 cell must create a real hole.");
+assertValid(regional.geometry);
 assert.ok(polygons(precise.geometry)[0].length > 1, "A contained res10 cell must create a real hole.");
 function longitudeSpan(ring: number[][]) {
   const longitudes = ring.map(([longitude]) => longitude);

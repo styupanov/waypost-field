@@ -31,6 +31,7 @@
     "test:explore-intent": "node --experimental-strip-types scripts/verify-explore-intent.ts",
     "test:user-interests": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-user-interests.ts",
     "test:exploration-intelligence": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-exploration-intelligence.ts",
+    "test:exploration-potential": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-exploration-potential.ts",
     "data:build-exploration-intelligence": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/build-exploration-intelligence.ts",
     "diagnose:fog-mask": "node --experimental-strip-types --env-file=.env.local scripts/diagnose-fog-mask.ts",
     "compare:routes": "node --experimental-strip-types --env-file=.env.local scripts/compare-route-geometries.ts",

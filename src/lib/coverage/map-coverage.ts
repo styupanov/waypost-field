@@ -3,16 +3,16 @@ import { BASE_H3_RESOLUTION, COVERAGE_SOURCE } from "./h3-route.ts";
 import type { CoverageViewport, PersonalCoverageResponse } from "../../types/coverage.ts";
 
 export const COVERAGE_ZOOM_RESOLUTION_POLICY = [
-  { minimumZoom: 11.5, resolution: 10 },
-  { minimumZoom: 10, resolution: 9 },
-  { minimumZoom: 8.5, resolution: 8 },
-  { minimumZoom: 7, resolution: 7 },
-  { minimumZoom: 5.5, resolution: 6 },
+  { minimumZoom: 11.5, resolution: 9 },
+  { minimumZoom: 10, resolution: 8 },
+  { minimumZoom: 8.5, resolution: 7 },
+  { minimumZoom: 7, resolution: 6 },
+  { minimumZoom: 5.5, resolution: 5 },
 ] as const;
 
 export function coverageDisplayResolution(zoom: number) {
   if (!Number.isFinite(zoom)) throw new Error("Zoom must be a finite number.");
-  return COVERAGE_ZOOM_RESOLUTION_POLICY.find((entry) => zoom >= entry.minimumZoom)?.resolution ?? 5;
+  return COVERAGE_ZOOM_RESOLUTION_POLICY.find((entry) => zoom >= entry.minimumZoom)?.resolution ?? 4;
 }
 
 export function validateCoverageViewport(viewport: CoverageViewport) {

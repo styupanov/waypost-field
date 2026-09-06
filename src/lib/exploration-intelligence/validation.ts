@@ -1,6 +1,6 @@
 import { getResolution, isValidCell } from "h3-js";
 
-export const EXPLORATION_H3_RESOLUTIONS = [5, 6, 7, 8, 9, 10] as const;
+export const EXPLORATION_H3_RESOLUTIONS = [4, 5, 6, 7, 8, 9, 10] as const;
 
 export function parseAreaIntelligenceQuery(url: string) {
   const params = new URL(url).searchParams;

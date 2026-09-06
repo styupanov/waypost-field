@@ -26,11 +26,14 @@ import type {
   DrivingPace,
 } from "@/types/preferences";
 import type { FinalRoutePreviewState, TripFinalizationState, TripLifecycleActionState, TravelConfirmationActionState } from "@/types/final-route";
+import type { ExploreIntent } from "@/types/explore-intent";
 
 type TripIntentPanelProps = {
   origin: TripEndpoint;
   stop: TripEndpoint | null;
   destination: TripEndpoint;
+  exploreIntent: ExploreIntent | null;
+  onClearExploreIntent: () => void;
   plannerState: PlannerState;
   pickingMode: PickingMode;
   preferences: TripPreferences;
@@ -152,6 +155,8 @@ export default function TripIntentPanel({
   origin,
   stop,
   destination,
+  exploreIntent,
+  onClearExploreIntent,
   plannerState,
   pickingMode,
   preferences,
@@ -314,10 +319,15 @@ export default function TripIntentPanel({
 
   return (
     <section ref={panelRef} className={styles.panel} aria-label="Trip planner">
-      {(!visibleDraft || isEditingTrip) && finalizationState.status !== "planned" ? (
+      {exploreIntent ? <div className={styles.exploreContext}>
+        <strong>Explore this area</strong>
+        <span>You&apos;ve selected an unexplored part of your map.</span>
+        <button type="button" onClick={onClearExploreIntent}>Clear area</button>
+      </div> : null}
+      {!exploreIntent && (!visibleDraft || isEditingTrip) && finalizationState.status !== "planned" ? (
         <h1 id="trip-intent-heading">{visibleDraft ? "Edit trip" : "Plan a trip"}</h1>
       ) : null}
-      {(!visibleDraft || isEditingTrip) && finalizationState.status !== "planned" ? <form onSubmit={handleSubmit}>
+      {!exploreIntent && (!visibleDraft || isEditingTrip) && finalizationState.status !== "planned" ? <form onSubmit={handleSubmit}>
         <div className={styles.endpointField}>
           <label className={styles.placeField}>
             Origin

@@ -33,6 +33,8 @@ import type { PersonalCoverageBoundsResponse } from "@/types/coverage";
 import { DEFAULT_PERSONAL_MAP_LAYERS, personalHistoryLayerActive } from "@/lib/personal-history/layer-state";
 import { createUnexploredTerritorySelection, selectionIsExplored } from "@/lib/coverage/unexplored-territory";
 import type { UnexploredTerritorySelection } from "@/types/unexplored-territory";
+import type { ExploreIntent } from "@/types/explore-intent";
+import { exploreIntentFromSelection, serializeExploreIntent } from "@/lib/trip/explore-intent";
 import type { FinalRoutePreview, FinalRoutePreviewState, FinalizedTripResult, FinalizedTripWorkspace, TripFinalizationState, TripLifecycleActionState, TravelConfirmationActionState } from "@/types/final-route";
 
 const initialOrigin: TripEndpoint = {
@@ -49,13 +51,22 @@ const initialDestination: TripEndpoint = {
   source: "text",
 };
 
+const emptyExploreDestination: TripEndpoint = {
+  input: "",
+  coordinates: null,
+  resolvedLabel: null,
+  source: "text",
+};
+
+const explorePlannerState: PlannerState = { status: "trip_intent" };
+
 function coordinateLabel(coordinates: Coordinates) {
   return `${coordinates.lat.toFixed(5)}, ${coordinates.lon.toFixed(5)}`;
 }
 
 type PlannerSession = { email?: string | null; name?: string | null } | null;
 
-export default function TripPlanner({ initialSession, requestedTripId, requestedMode }: { initialSession: PlannerSession; requestedTripId: string | null; requestedMode: string | null }) {
+export default function TripPlanner({ initialSession, requestedTripId, requestedMode, exploreIntent }: { initialSession: PlannerSession; requestedTripId: string | null; requestedMode: string | null; exploreIntent: ExploreIntent | null }) {
   const router = useRouter();
   const [plannerState, setPlannerState] = useState<PlannerState>({
     status: "trip_intent",
@@ -105,6 +116,7 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
     excludedCategories: [],
   }));
   const workspaceMode = resolveWorkspaceMode({ authenticated: Boolean(sessionUser), requestedTripId, requestedMode });
+  const activeExploreIntent = workspaceMode === "planner" ? exploreIntent : null;
   const handleUnexploredMapClick = useCallback((coordinates: Coordinates, displayResolution: number, revealedCells: string[], clickedFog: boolean) => {
     if (!clickedFog) { setUnexploredSelection(null); return; }
     const selection = createUnexploredTerritorySelection(coordinates.lat, coordinates.lon, displayResolution);
@@ -615,7 +627,30 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
   }
 
   function startNewTrip() {
+    if (activeExploreIntent) {
+      if (plannerState.status === "generating_draft") return;
+      if (visibleDraft && ownershipStatus === "unsaved") {
+        setPendingNavigation({ mode: "planner" });
+        return;
+      }
+      tripLoadSequence.current += 1;
+      clearTripContext(); setUnexploredSelection(null);
+      router.replace("/?mode=planner");
+      return;
+    }
     requestWorkspaceNavigation({ mode: "planner" });
+  }
+
+  function exploreSelectedArea() {
+    if (!unexploredSelection) return;
+    const intent = exploreIntentFromSelection(unexploredSelection);
+    setUnexploredSelection(null);
+    router.push(`/?${serializeExploreIntent(intent).toString()}`);
+  }
+
+  function clearExploreIntent() {
+    setUnexploredSelection(null);
+    router.replace("/?mode=planner");
   }
 
   function enterPersonalMap() {
@@ -654,19 +689,19 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
   return (
     <>
       <MapCanvas
-        route={tripWorkspaceVisible ? displayedRoute : null}
+        route={tripWorkspaceVisible && !activeExploreIntent ? displayedRoute : null}
         attractionStops={
-          tripWorkspaceVisible ? visibleDraft?.stops.filter(isAttractionStop) ?? [] : []
+          tripWorkspaceVisible && !activeExploreIntent ? visibleDraft?.stops.filter(isAttractionStop) ?? [] : []
         }
-        overnightStops={tripWorkspaceVisible ? visibleDraft?.stops.filter(isOvernightStop) ?? [] : []}
-        alternatives={tripWorkspaceVisible ? visibleDraft?.alternatives ?? [] : []}
+        overnightStops={tripWorkspaceVisible && !activeExploreIntent ? visibleDraft?.stops.filter(isOvernightStop) ?? [] : []}
+        alternatives={tripWorkspaceVisible && !activeExploreIntent ? visibleDraft?.alternatives ?? [] : []}
         originCoordinates={tripWorkspaceVisible ? origin.coordinates : null}
-        stopCoordinates={tripWorkspaceVisible ? stop?.coordinates ?? null : null}
-        destinationCoordinates={tripWorkspaceVisible ? destination.coordinates : null}
-        pickingMode={tripWorkspaceVisible ? pickingMode : null}
-        activePoiId={tripWorkspaceVisible ? activePoiId : null}
-        activeNightIndex={tripWorkspaceVisible ? activeNightIndex : null}
-        focusCoordinates={tripWorkspaceVisible ? mapFocusCoordinates : null}
+        stopCoordinates={tripWorkspaceVisible && !activeExploreIntent ? stop?.coordinates ?? null : null}
+        destinationCoordinates={tripWorkspaceVisible && !activeExploreIntent ? destination.coordinates : null}
+        pickingMode={tripWorkspaceVisible && !activeExploreIntent ? pickingMode : null}
+        activePoiId={tripWorkspaceVisible && !activeExploreIntent ? activePoiId : null}
+        activeNightIndex={tripWorkspaceVisible && !activeExploreIntent ? activeNightIndex : null}
+        focusCoordinates={tripWorkspaceVisible && !activeExploreIntent ? mapFocusCoordinates : null}
         hoveredPoiId={hoveredPoiId}
         isReplacing={replacementTargetId !== null}
         personalCoverageEnabled={Boolean(sessionUser)}
@@ -677,6 +712,7 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
         traveledRoutesEnabled={personalHistoryLayerActive(workspaceMode, traveledRoutesEnabled)}
         visitedPlacesEnabled={personalHistoryLayerActive(workspaceMode, visitedPlacesEnabled)}
         unexploredSelection={workspaceMode === "personal_map" ? unexploredSelection : null}
+        exploreIntent={activeExploreIntent}
         onUnexploredMapClick={handleUnexploredMapClick}
         onPersonalCoverageRendered={handlePersonalCoverageRendered}
         onMapPointSelected={selectMapPoint}
@@ -686,10 +722,12 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
       />
       {tripWorkspaceVisible ? <TripIntentPanel
         origin={origin}
-        stop={stop}
-        destination={destination}
-        plannerState={plannerState}
-        pickingMode={pickingMode}
+        stop={activeExploreIntent ? null : stop}
+        destination={activeExploreIntent ? emptyExploreDestination : destination}
+        exploreIntent={activeExploreIntent}
+        onClearExploreIntent={clearExploreIntent}
+        plannerState={activeExploreIntent ? explorePlannerState : plannerState}
+        pickingMode={activeExploreIntent ? null : pickingMode}
         preferences={preferences}
         onInputChange={updateEndpointInput}
         onPickingModeChange={setPickingMode}
@@ -750,7 +788,7 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
         onConfirmUndoTravelConfirmation={() => void updateTravelConfirmation("undo")}
         onCancelTravelConfirmation={() => setTravelConfirmationState({ status: "idle" })}
       /> : null}
-      {tripWorkspaceVisible && visibleDraft && finalizationState.status !== "planned" && visibleDraft.alternatives.length > 0 ? (
+      {tripWorkspaceVisible && !activeExploreIntent && visibleDraft && finalizationState.status !== "planned" && visibleDraft.alternatives.length > 0 ? (
         <AlongTheWay
           alternatives={visibleDraft.alternatives}
           activePoiId={activePoiId}
@@ -779,7 +817,7 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
           onCancelReplacement={() => setReplacementTargetId(null)}
         />
       ) : null}
-      {tripWorkspaceVisible && findingAlternatives ? <div className="finding-places" role="status">Finding places along the way…</div> : null}
+      {tripWorkspaceVisible && !activeExploreIntent && findingAlternatives ? <div className="finding-places" role="status">Finding places along the way…</div> : null}
       {workspaceMode === "personal_map" ? <section className="personal-map-chrome" aria-label="Personal Map">
         <strong>My Map</strong>
         <small>{personalMapCoverageState === "empty" ? "Your map will open up as you travel." : "Your traveled territory"}</small>
@@ -792,6 +830,7 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
         {unexploredSelection ? <div className="unexplored-territory-context">
           <strong>Unexplored territory</strong>
           <small>This area isn&apos;t part of your traveled map yet.</small>
+          <button className="primary" type="button" onClick={exploreSelectedArea}>Explore this area</button>
           <button type="button" onClick={() => setUnexploredSelection(null)}>Clear</button>
         </div> : null}
       </section> : null}

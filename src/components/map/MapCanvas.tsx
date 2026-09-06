@@ -19,6 +19,8 @@ import type { CoverageViewport } from "@/types/coverage";
 import { coverageStyleForMode } from "@/lib/coverage/coverage-style";
 import type { TraveledRouteHistoryResponse, VisitedPlacesResponse } from "@/types/personal-history";
 import type { UnexploredTerritorySelection } from "@/types/unexplored-territory";
+import type { ExploreIntent } from "@/types/explore-intent";
+import { exploreIntentBoundary } from "@/lib/trip/explore-intent";
 
 maplibregl.setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
@@ -44,6 +46,7 @@ type MapCanvasProps = {
   traveledRoutesEnabled: boolean;
   visitedPlacesEnabled: boolean;
   unexploredSelection: UnexploredTerritorySelection | null;
+  exploreIntent: ExploreIntent | null;
   onUnexploredMapClick: (coordinates: Coordinates, displayResolution: number, revealedCells: string[], clickedFog: boolean) => void;
   onPersonalCoverageRendered: (displayResolution: number, cells: string[]) => void;
   onMapPointSelected: (field: TripField, coordinates: Coordinates) => void;
@@ -71,6 +74,9 @@ const VISITED_PLACES_LAYER_ID = "waypost-visited-places-circle";
 const UNEXPLORED_SELECTION_SOURCE_ID = "waypost-unexplored-selection";
 const UNEXPLORED_SELECTION_FILL_LAYER_ID = "waypost-unexplored-selection-fill";
 const UNEXPLORED_SELECTION_OUTLINE_LAYER_ID = "waypost-unexplored-selection-outline";
+const EXPLORE_AREA_SOURCE_ID = "waypost-explore-area";
+const EXPLORE_AREA_FILL_LAYER_ID = "waypost-explore-area-fill";
+const EXPLORE_AREA_OUTLINE_LAYER_ID = "waypost-explore-area-outline";
 
 function renderPersonalCoverage(map: maplibregl.Map, cells: string[], fog: FogMaskFeature, personalMapMode: boolean) {
   const coverageStyle = coverageStyleForMode(personalMapMode);
@@ -233,6 +239,7 @@ export default function MapCanvas({
   traveledRoutesEnabled,
   visitedPlacesEnabled,
   unexploredSelection,
+  exploreIntent,
   onUnexploredMapClick,
   onPersonalCoverageRendered,
   onMapPointSelected,
@@ -369,6 +376,30 @@ export default function MapCanvas({
     if (!mapInstance.getLayer(UNEXPLORED_SELECTION_FILL_LAYER_ID)) mapInstance.addLayer({ id: UNEXPLORED_SELECTION_FILL_LAYER_ID, type: "fill", source: UNEXPLORED_SELECTION_SOURCE_ID, paint: { "fill-color": "#f3c969", "fill-opacity": 0.16 } });
     if (!mapInstance.getLayer(UNEXPLORED_SELECTION_OUTLINE_LAYER_ID)) mapInstance.addLayer({ id: UNEXPLORED_SELECTION_OUTLINE_LAYER_ID, type: "line", source: UNEXPLORED_SELECTION_SOURCE_ID, paint: { "line-color": "#f0c04f", "line-width": 2, "line-opacity": 0.9 } });
   }, [personalMapMode, unexploredSelection]);
+
+  useEffect(() => {
+    const mapInstance = map.current;
+    if (!mapInstance) return;
+    if (!exploreIntent) {
+      const source = mapInstance.getSource(EXPLORE_AREA_SOURCE_ID);
+      if (source) (source as maplibregl.GeoJSONSource).setData(EMPTY_COVERAGE);
+      return;
+    }
+    const renderExploreArea = () => {
+      const boundary = exploreIntentBoundary(exploreIntent);
+      const feature: GeoJSON.Feature<GeoJSON.Polygon> = { type: "Feature", properties: { kind: "area_of_interest" }, geometry: boundary };
+      const source = mapInstance.getSource(EXPLORE_AREA_SOURCE_ID);
+      if (source) (source as maplibregl.GeoJSONSource).setData(feature);
+      else mapInstance.addSource(EXPLORE_AREA_SOURCE_ID, { type: "geojson", data: feature });
+      if (!mapInstance.getLayer(EXPLORE_AREA_FILL_LAYER_ID)) mapInstance.addLayer({ id: EXPLORE_AREA_FILL_LAYER_ID, type: "fill", source: EXPLORE_AREA_SOURCE_ID, paint: { "fill-color": "#2563eb", "fill-opacity": 0.14 } });
+      if (!mapInstance.getLayer(EXPLORE_AREA_OUTLINE_LAYER_ID)) mapInstance.addLayer({ id: EXPLORE_AREA_OUTLINE_LAYER_ID, type: "line", source: EXPLORE_AREA_SOURCE_ID, paint: { "line-color": "#1d4ed8", "line-width": 2.5, "line-opacity": 0.95, "line-dasharray": [2, 1.5] } });
+      const bounds = new maplibregl.LngLatBounds();
+      for (const coordinate of boundary.coordinates[0]) bounds.extend(coordinate as [number, number]);
+      mapInstance.fitBounds(bounds, { padding: 120, duration: 800, maxZoom: 9 });
+    };
+    if (mapInstance.isStyleLoaded()) renderExploreArea(); else mapInstance.once("load", renderExploreArea);
+    return () => { mapInstance.off("load", renderExploreArea); };
+  }, [exploreIntent]);
 
   useEffect(() => {
     const mapInstance = map.current;

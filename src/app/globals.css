@@ -38,6 +38,7 @@ body {
 .personal-map-layers label { display: flex; align-items: center; gap: 6px; color: #475569; font-size: 11px; }
 .unexplored-territory-context { display: grid; gap: 4px; margin-top: 7px; padding-top: 9px; border-top: 1px solid #e2e8f0; }
 .unexplored-territory-context strong { font-size: 12px; }
+.personal-map-chrome .unexplored-territory-context button.primary { padding: 6px 9px; border-radius: 6px; background: #1d4ed8; color: white; }
 .my-trips-drawer { position: absolute; z-index: 5; top: 16px; right: 16px; width: min(360px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 16px; border: 1px solid #e2e8f0; border-radius: 12px; background: rgb(255 255 255 / 97%); box-shadow: 0 16px 40px rgb(15 23 42 / 24%); color: #1f2937; font-family: var(--font-geist-sans), sans-serif; }
 .my-trips-drawer header { display: flex; align-items: center; justify-content: space-between; }
 .my-trips-drawer header div { display: flex; align-items: center; gap: 10px; }

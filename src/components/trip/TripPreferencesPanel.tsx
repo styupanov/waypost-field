@@ -7,15 +7,7 @@ import type {
   DrivingPace,
 } from "@/types/preferences";
 import { calculateTripDayRecommendation } from "@/lib/trip/multi-day";
-
-const CATEGORY_OPTIONS: { value: InterestCategory; label: string }[] = [
-  { value: "nature_scenic", label: "Nature & Scenic" },
-  { value: "outdoor_adventure", label: "Outdoor & Adventure" },
-  { value: "history_landmarks", label: "History & Landmarks" },
-  { value: "museums_culture", label: "Museums & Culture" },
-  { value: "food_drink", label: "Food & Drink" },
-  { value: "shopping", label: "Shopping" },
-];
+import { INTEREST_CATEGORIES } from "@/lib/interests/taxonomy";
 
 const DETOUR_OPTIONS: {
   value: DetourTolerance;
@@ -56,7 +48,7 @@ function summaryFor(preferences: TripPreferences) {
   ) return "Balanced trip";
 
   const preferredLabels = preferences.preferredCategories.map(
-    (category) => CATEGORY_OPTIONS.find((option) => option.value === category)?.label
+    (category) => INTEREST_CATEGORIES.find((option) => option.key === category)?.label
   );
   const detourLabel = DETOUR_OPTIONS.find(
     (option) => option.value === preferences.detourTolerance
@@ -89,13 +81,13 @@ export default function TripPreferencesPanel({
         <fieldset disabled={disabled}>
           <legend>What are you interested in?</legend>
           <div className={styles.choiceGrid}>
-            {CATEGORY_OPTIONS.map((option) => (
-              <label key={`preferred-${option.value}`}>
+            {INTEREST_CATEGORIES.map((option) => (
+              <label key={`preferred-${option.key}`}>
                 <input
                   type="checkbox"
-                  checked={preferences.preferredCategories.includes(option.value)}
+                  checked={preferences.preferredCategories.includes(option.key)}
                   onChange={(event) =>
-                    onPreferredCategoryChange(option.value, event.target.checked)
+                    onPreferredCategoryChange(option.key, event.target.checked)
                   }
                 />
                 {option.label}
@@ -107,13 +99,13 @@ export default function TripPreferencesPanel({
         <fieldset disabled={disabled}>
           <legend>Anything you want to skip?</legend>
           <div className={styles.choiceGrid}>
-            {CATEGORY_OPTIONS.map((option) => (
-              <label key={`excluded-${option.value}`}>
+            {INTEREST_CATEGORIES.map((option) => (
+              <label key={`excluded-${option.key}`}>
                 <input
                   type="checkbox"
-                  checked={preferences.excludedCategories.includes(option.value)}
+                  checked={preferences.excludedCategories.includes(option.key)}
                   onChange={(event) =>
-                    onExcludedCategoryChange(option.value, event.target.checked)
+                    onExcludedCategoryChange(option.key, event.target.checked)
                   }
                 />
                 {option.label}

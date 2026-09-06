@@ -3,15 +3,7 @@ import {
   type InterestCategory,
   type TripPreferences,
 } from "@/types/preferences";
-
-const INTEREST_CATEGORIES: InterestCategory[] = [
-  "nature_scenic",
-  "outdoor_adventure",
-  "history_landmarks",
-  "museums_culture",
-  "food_drink",
-  "shopping",
-];
+import { INTEREST_CATEGORY_KEYS } from "@/lib/interests/taxonomy";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -43,10 +35,10 @@ export function parseTripPreferences(
     !Array.isArray(preferredCategories) ||
     !Array.isArray(excludedCategories) ||
     !preferredCategories.every((category) =>
-      INTEREST_CATEGORIES.includes(category as InterestCategory)
+      INTEREST_CATEGORY_KEYS.includes(category as InterestCategory)
     ) ||
     !excludedCategories.every((category) =>
-      INTEREST_CATEGORIES.includes(category as InterestCategory)
+      INTEREST_CATEGORY_KEYS.includes(category as InterestCategory)
     ) ||
     new Set(preferredCategories).size !== preferredCategories.length ||
     new Set(excludedCategories).size !== excludedCategories.length ||

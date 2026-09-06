@@ -7,6 +7,7 @@ import MapCanvas from "@/components/map/MapCanvas";
 import AlongTheWay from "@/components/trip/AlongTheWay";
 import LocalSignInDialog from "@/components/trip/LocalSignInDialog";
 import MyTripsDrawer from "@/components/trip/MyTripsDrawer";
+import UserInterestsDialog from "@/components/account/UserInterestsDialog";
 import TripIntentPanel from "@/components/trip/TripIntentPanel";
 import type {
   Coordinates,
@@ -87,6 +88,7 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
   const [ownershipStatus, setOwnershipStatus] = useState<"unsaved" | "saving" | "saved" | "error">("unsaved");
   const [authPurpose, setAuthPurpose] = useState<"save" | "trips" | "open-trip" | null>(null);
   const [isMyTripsOpen, setIsMyTripsOpen] = useState(false);
+  const [isInterestsOpen, setIsInterestsOpen] = useState(false);
   const [savedTripState, setSavedTripState] = useState<"idle" | "loading" | "forbidden" | "error">(
     requestedTripId ? (initialSession ? "loading" : "forbidden") : "idle"
   );
@@ -837,8 +839,9 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
       <div className="account-control">
         {sessionUser && workspaceMode !== "personal_map" ? <button onClick={enterPersonalMap}>My Map</button> : null}
         <button onClick={() => { if (sessionUser) setIsMyTripsOpen(true); else setAuthPurpose("trips"); }}>My Trips</button>
-        {sessionUser ? <><span>{sessionUser.name || sessionUser.email}</span><button onClick={() => void signOut({ redirectTo: ownedTripId ? `/?trip=${ownedTripId}` : "/" })}>Sign out</button></> : null}
+        {sessionUser ? <><button onClick={() => setIsInterestsOpen(true)}>Interests</button><span>{sessionUser.name || sessionUser.email}</span><button onClick={() => { setIsInterestsOpen(false); void signOut({ redirectTo: ownedTripId ? `/?trip=${ownedTripId}` : "/" }); }}>Sign out</button></> : null}
       </div>
+      {sessionUser && isInterestsOpen ? <UserInterestsDialog key={sessionUser.email ?? sessionUser.name ?? "authenticated-user"} onClose={() => setIsInterestsOpen(false)} /> : null}
       <MyTripsDrawer
         open={isMyTripsOpen && Boolean(sessionUser)}
         currentTripId={ownedTripId ?? requestedTripId}

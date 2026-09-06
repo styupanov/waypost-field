@@ -27,6 +27,8 @@ import type {
 } from "@/types/preferences";
 import type { FinalRoutePreviewState, TripFinalizationState, TripLifecycleActionState, TravelConfirmationActionState } from "@/types/final-route";
 import type { ExploreIntent } from "@/types/explore-intent";
+import type { AreaIntelligenceClientState } from "@/types/exploration-intelligence";
+import AreaIntelligenceSummary from "@/components/map/AreaIntelligenceSummary";
 
 type TripIntentPanelProps = {
   origin: TripEndpoint;
@@ -34,6 +36,7 @@ type TripIntentPanelProps = {
   destination: TripEndpoint;
   exploreIntent: ExploreIntent | null;
   onClearExploreIntent: () => void;
+  areaIntelligence: AreaIntelligenceClientState;
   plannerState: PlannerState;
   pickingMode: PickingMode;
   preferences: TripPreferences;
@@ -157,6 +160,7 @@ export default function TripIntentPanel({
   destination,
   exploreIntent,
   onClearExploreIntent,
+  areaIntelligence,
   plannerState,
   pickingMode,
   preferences,
@@ -322,6 +326,7 @@ export default function TripIntentPanel({
       {exploreIntent ? <div className={styles.exploreContext}>
         <strong>Explore this area</strong>
         <span>You&apos;ve selected an unexplored part of your map.</span>
+        <AreaIntelligenceSummary state={areaIntelligence} />
         <button type="button" onClick={onClearExploreIntent}>Clear area</button>
       </div> : null}
       {!exploreIntent && (!visibleDraft || isEditingTrip) && finalizationState.status !== "planned" ? (

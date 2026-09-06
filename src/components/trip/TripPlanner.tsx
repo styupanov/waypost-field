@@ -36,6 +36,8 @@ import { createUnexploredTerritorySelection, selectionIsExplored } from "@/lib/c
 import type { UnexploredTerritorySelection } from "@/types/unexplored-territory";
 import type { ExploreIntent } from "@/types/explore-intent";
 import { exploreIntentFromSelection, serializeExploreIntent } from "@/lib/trip/explore-intent";
+import { useAreaExplorationIntelligence } from "@/lib/exploration-intelligence/use-area-intelligence";
+import AreaIntelligenceSummary from "@/components/map/AreaIntelligenceSummary";
 import type { FinalRoutePreview, FinalRoutePreviewState, FinalizedTripResult, FinalizedTripWorkspace, TripFinalizationState, TripLifecycleActionState, TravelConfirmationActionState } from "@/types/final-route";
 
 const initialOrigin: TripEndpoint = {
@@ -119,6 +121,10 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
   }));
   const workspaceMode = resolveWorkspaceMode({ authenticated: Boolean(sessionUser), requestedTripId, requestedMode });
   const activeExploreIntent = workspaceMode === "planner" ? exploreIntent : null;
+  const intelligenceArea = workspaceMode === "personal_map" && unexploredSelection
+    ? { h3Index: unexploredSelection.h3Index, resolution: unexploredSelection.resolution }
+    : activeExploreIntent ? { h3Index: activeExploreIntent.h3Index, resolution: activeExploreIntent.resolution } : null;
+  const areaIntelligence = useAreaExplorationIntelligence(intelligenceArea);
   const handleUnexploredMapClick = useCallback((coordinates: Coordinates, displayResolution: number, revealedCells: string[], clickedFog: boolean) => {
     if (!clickedFog) { setUnexploredSelection(null); return; }
     const selection = createUnexploredTerritorySelection(coordinates.lat, coordinates.lon, displayResolution);
@@ -728,6 +734,7 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
         destination={activeExploreIntent ? emptyExploreDestination : destination}
         exploreIntent={activeExploreIntent}
         onClearExploreIntent={clearExploreIntent}
+        areaIntelligence={areaIntelligence}
         plannerState={activeExploreIntent ? explorePlannerState : plannerState}
         pickingMode={activeExploreIntent ? null : pickingMode}
         preferences={preferences}
@@ -832,6 +839,7 @@ export default function TripPlanner({ initialSession, requestedTripId, requested
         {unexploredSelection ? <div className="unexplored-territory-context">
           <strong>Unexplored territory</strong>
           <small>This area isn&apos;t part of your traveled map yet.</small>
+          <AreaIntelligenceSummary state={areaIntelligence} />
           <button className="primary" type="button" onClick={exploreSelectedArea}>Explore this area</button>
           <button type="button" onClick={() => setUnexploredSelection(null)}>Clear</button>
         </div> : null}

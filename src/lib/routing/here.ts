@@ -1,4 +1,5 @@
 import "server-only";
+import { archiveRawProviderPayload, type RawProviderArchiveInput } from "../aws/raw-provider-archive.ts";
 import type { RoutingWaypoint, FinalRoutePreview } from "../../types/final-route.ts";
 import type { TripDraft } from "../../types/trip.ts";
 import { normalizeHereResponse } from "./here-normalization.ts";
@@ -20,7 +21,7 @@ export function orderedWaypointsFromDraft(draft: TripDraft): RoutingWaypoint[] {
   return [draft.origin.coordinates, ...draft.stops.map((stop) => stop.coordinates), draft.destination.coordinates].map((point) => ({ latitude: point.lat, longitude: point.lon }));
 }
 
-export async function calculateHereFinalRoute(waypoints: RoutingWaypoint[], options: { apiKey?: string; fetchImpl?: typeof fetch; timeoutMilliseconds?: number } = {}): Promise<FinalRoutePreview> {
+export async function calculateHereFinalRoute(waypoints: RoutingWaypoint[], options: { apiKey?: string; fetchImpl?: typeof fetch; timeoutMilliseconds?: number; archiveImpl?: (input: RawProviderArchiveInput) => Promise<void> } = {}): Promise<FinalRoutePreview> {
   const apiKey = options.apiKey ?? process.env.HERE_API_KEY;
   if (!apiKey) throw new HereRoutingError("HERE_NOT_CONFIGURED", "HERE routing is not configured.", 503);
   if (waypoints.length < 2 || waypoints.some((point) => !validWaypoint(point))) throw new HereRoutingError("INVALID_WAYPOINTS", "The ordered itinerary contains invalid waypoints.", 400);
@@ -40,6 +41,10 @@ export async function calculateHereFinalRoute(waypoints: RoutingWaypoint[], opti
   let payload: unknown;
   try { payload = await response.json(); }
   catch { throw new HereRoutingError("HERE_INVALID_RESPONSE", "HERE returned invalid route data.", 502); }
-  try { return normalizeHereResponse(payload, waypoints.length, performance.now() - started); }
+  const fetchedAt = new Date().toISOString();
+  const elapsedMilliseconds = performance.now() - started;
+  try { await (options.archiveImpl ?? archiveRawProviderPayload)({ provider: "here", domain: "routing", fetchedAt, payload }); }
+  catch { console.warn("Raw HERE archive failed; continuing route calculation."); }
+  try { return normalizeHereResponse(payload, waypoints.length, elapsedMilliseconds); }
   catch { throw new HereRoutingError("HERE_INVALID_RESPONSE", "HERE returned an incomplete route preview.", 502); }
 }

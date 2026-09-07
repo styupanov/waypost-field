@@ -39,9 +39,11 @@
     "compare:routes": "node --experimental-strip-types --env-file=.env.local scripts/compare-route-geometries.ts",
     "calibrate:h3-route": "node --experimental-strip-types --env-file=.env.local scripts/calibrate-h3-route.ts",
     "db:smoke-finalization": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/smoke-finalization.ts",
-    "db:verify-overnights": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-overnight-persistence.ts"
+    "db:verify-overnights": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-overnight-persistence.ts",
+    "test:raw-provider-archive": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types scripts/verify-raw-provider-archive.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1127.0",
     "@google/genai": "^2.21.0",
     "h3-js": "^4.5.0",
     "maplibre-gl": "^6.7.0",

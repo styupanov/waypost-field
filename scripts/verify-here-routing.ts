@@ -3,6 +3,9 @@ import { calculateHereFinalRoute, HereRoutingError, MAX_FINAL_ROUTE_WAYPOINTS, o
 import { concatenateSectionCoordinates, decodeFlexiblePolyline, normalizeHereResponse } from "../src/lib/routing/here-normalization.ts";
 import type { TripDraft } from "../src/types/trip.ts";
 
+// Prevent real AWS calls even when the invoking shell enables ingestion.
+process.env.RAW_PROVIDER_ARCHIVE_ENABLED = "false";
+
 const first = "BFoz5xJ67i1B1B7PzIhaxL7Y";
 assert.deepEqual(decodeFlexiblePolyline(first), [[8.69821, 50.10228], [8.69567, 50.10201], [8.6915, 50.10063], [8.68752, 50.09878]]);
 const normalized = normalizeHereResponse({ routes: [{ sections: [{ polyline: first, summary: { length: 1000, duration: 100, baseDuration: 90 } }, { polyline: first, summary: { length: 2000, duration: 200, baseDuration: 180 } }] }] }, 3, 12);

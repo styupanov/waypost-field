@@ -42,3 +42,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Python ETL
+__pycache__/
+*.py[cod]
+/etl/.venv/
+
+.env.rds.local

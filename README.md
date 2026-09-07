@@ -20,7 +20,32 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Raw HERE ingestion (opt-in)
+
+Set `RAW_PROVIDER_ARCHIVE_ENABLED=true`, `RAW_PROVIDER_ARCHIVE_BUCKET=geospatial-learning-sergei-2026`,
+and `AWS_REGION=us-east-1` in the server environment. Locally, set `AWS_PROFILE=travel-dev`
+and run `aws sso login --profile travel-dev` before starting Next.js. The SDK uses its default
+credential chain; deployments can omit the profile and use an IAM role.
+
+Successful HERE JSON bodies are wrapped with schema version, provider, domain, and UTC fetched time
+and written under `raw/routing/here/year=YYYY/month=MM/day=DD/` before normalization.
+Request URLs, headers, and credentials are never passed to ingestion. Writes are awaited with a
+three-second limit and no SDK retries; failures produce a sanitized warning and routing continues.
+This is best-effort ingestion with no retry queue or read path. HERE data remains provider-controlled
+temporary content, separate from permanent trip data: configure S3 lifecycle expiration for this
+prefix according to the applicable retention requirements before enabling it.
+
+For a real smoke test, the SSO role needs `s3:PutObject` on the bucket's `raw/routing/here/*` prefix
+(plus permissions required by its encryption policy). Enable the settings above, restart the app,
+and calculate a fresh HERE final route with a configured `HERE_API_KEY`. With an identity that has
+read/list access, inspect the new object under the current UTC date and verify the metadata and
+original response body. Disable ingestion afterward if only testing.
+`npm run test:here-routing` and `npm run test:raw-provider-archive` make no real AWS calls.
+
 ## Learn More
+
+For standalone Python processing of archived HERE responses into S3 analytics records,
+see [the ETL setup, schema, and smoke-test commands](etl/README.md).
 
 To learn more about Next.js, take a look at the following resources:
 

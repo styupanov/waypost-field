@@ -294,3 +294,141 @@ If settings are already present in the command environment, omit `--env-file` fr
 commands; keep `--target rds`. Neither command changes the environment of the running app.
 Offline configuration checks: `node scripts/verify-database-target.mjs` and the Python unit
 test command above cover target isolation, CA requirements, and rejection of SSL downgrades.
+
+## AWS runtime: Secrets Manager database configuration
+
+The Python loader and read-only verifier also accept **`--target rds-secret`**. This is
+an explicit runtime mode; it reads configuration from the process environment only and
+ignores `--env-file`, `.env.local`, `.env.rds.local`, `DATABASE_URL`, and `RDS_DATABASE_URL`.
+The existing `--target rds` URL/private-file mode above is unchanged. The Node migration
+runner still uses that existing URL mode; Secrets Manager support is isolated to Python.
+Raw-to-processed ETL needs no database settings and remains unchanged.
+
+Set these environment variables inside the ECS task:
+
+```dotenv
+RDS_SECRET_ID=travel/dev/rds/etl
+RDS_SSL_ROOT_CERT=/app/certs/global-bundle.pem
+AWS_REGION=us-east-1
+```
+
+`RDS_SECRET_ID` accepts a secret name or ARN. The CA path is an example container path:
+the valid AWS RDS global CA PEM bundle must be packaged or mounted there and readable by
+the process. No certificate is downloaded automatically. `--region` overrides `AWS_REGION`,
+then `AWS_DEFAULT_REGION`; otherwise boto3 uses shared AWS configuration. Both S3 and
+Secrets Manager use the selected region. Do not set `AWS_PROFILE` or static AWS credentials
+inside ECS; assign the existing `travel-dev-etl-task-role` as the **task role**. boto3 uses
+the normal credential chain, including ECS-provided task credentials. Locally the same mode
+supports `AWS_PROFILE=travel-dev` after SSO login, provided that identity may read the secret.
+
+The secret must be a JSON `SecretString` object with these required fields:
+
+| Field | Required value |
+| --- | --- |
+| `username` | Nonempty string |
+| `password` | Nonempty string; special characters are escaped by libpq |
+| `host` | Single RDS DNS hostname matching its TLS certificate |
+| `port` | Integer or decimal digit string, 1–65535 |
+| `dbname` | Nonempty string |
+
+Malformed JSON, duplicate keys, missing/invalid fields, and binary secrets fail with safe
+field-specific errors. Additional fields cannot override connection options. The connection
+always sets `sslmode=verify-full` and the configured CA; it never falls back to a URL or
+insecure TLS. Secrets Manager is called once per command using `GetSecretValue` (default
+current version), bounded timeouts and standard retries. The value stays in memory and is
+neither persisted nor logged. SDK/driver messages and exception values remain excluded from
+normal and debug logs. Each new invocation retrieves the current secret again.
+
+Example container command (repository at `/app`, Python dependencies installed):
+
+```bash
+python etl/load_processed.py --target rds-secret \
+  --bucket geospatial-learning-sergei-2026 \
+  --key processed/routing/here/year=2026/month=09/day=06/2026-09-06T23-03-21.654Z-920f5e8e-8148-4578-94dd-6a8d11295693.json
+```
+
+Use the same arguments with `etl/verify_loaded.py` for read-only database verification.
+That verifier now needs Secrets Manager access in `rds-secret` mode, but no S3 access.
+Local development can use the same command after setting `RDS_SECRET_ID`,
+`RDS_SSL_ROOT_CERT=C:/Users/serge/global-bundle.pem`, `AWS_REGION=us-east-1`, and
+`AWS_PROFILE=travel-dev` in PowerShell. No local RDS URL configuration needs to be removed.
+
+The new runtime call needs only `secretsmanager:GetSecretValue` scoped to the secret;
+it does not call `DescribeSecret`, `ListSecrets`, or assume a role explicitly. If the secret
+uses a **customer-managed KMS key**, the role also needs `kms:Decrypt` for that key and its
+key policy must permit access. This additional permission is not required for the default
+AWS-managed `aws/secretsmanager` key. See the
+[AWS GetSecretValue permission requirements](https://docs.aws.amazon.com/secretsmanager/latest/apireference/API_GetSecretValue.html).
+Existing S3 permissions and database SELECT/INSERT/UPDATE privileges remain necessary.
+The task must have network access to Secrets Manager, S3 and the database. This change
+does not create a task definition, IAM policy or other infrastructure.
+
+All Secrets Manager tests are offline mocks. Run the full Python suite with the command
+in Local setup; no live secret retrieval or ECS deployment is part of these tests.
+
+## Python container (local build; ECS deployment later)
+
+From the repository root, using Docker Desktop in Linux-container mode:
+
+```powershell
+docker build --platform linux/amd64 -t travel-etl:dev -f etl/Dockerfile etl
+```
+
+The context is **`etl/`**, not the repository root. Its `.dockerignore` allowlist admits
+only runtime code, the Dockerfile and dependency lock: no dotenv files, AWS profiles,
+virtualenv, tests, Git history or Next.js files are copied. No build credentials are needed.
+The official `python:3.13-slim-bookworm` base is pinned by digest (Python 3.13.15 in the
+validated build). `requirements.lock` pins all Linux runtime dependencies within the
+existing `requirements.txt` ranges. Only binary wheels are installed; there is no compiler,
+AWS CLI, Node runtime or added development dependency. Pip caches are not retained.
+
+The build downloads the public bundle from
+`https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem`, checks SHA-256
+`e5bb2084ccf45087bda1c9bffdea0eb15ee67f0b91646106e466714f9de3c7e3`, and validates it with
+Python SSL. It resides at `/app/certs/global-bundle.pem`; the image sets `RDS_SSL_ROOT_CERT`
+to that path. A changed upstream bundle fails the build. Review the new bundle/checksum
+when updating it; likewise refresh the pinned base digest and runtime versions deliberately
+and repeat the tests below. Runtime never downloads the bundle and retains `verify-full`.
+
+User `etl` has UID/GID **10001:10001**, no login shell, and no writable application source.
+The exec-form entrypoint is `python`; the default command is `etl/load_processed.py --help`.
+ECS may override `command` with the script path and arguments (omit `python`). Select
+Linux/X86_64 for this build. No ports or service health check are needed for these batch CLIs.
+Set the task role to `travel-dev-etl-task-role`; do not set AWS_PROFILE or static credentials.
+
+Commands below require runtime AWS access; ECS supplies task-role credentials automatically.
+Local Docker does not inherit host SSO credentials merely because AWS_PROFILE exists on
+the host. The offline checks below need no authentication. No authenticated container run
+or image push is performed by this setup.
+
+```powershell
+# RAW -> PROCESSED (writes the deterministic processed S3 key)
+docker run --rm -e AWS_REGION=us-east-1 travel-etl:dev etl/process_raw.py --bucket geospatial-learning-sergei-2026 --key raw/routing/here/year=2026/month=09/day=06/2026-09-06T23-03-21.654Z-920f5e8e-8148-4578-94dd-6a8d11295693.json
+
+# PROCESSED -> RDS (verified TLS, secret retrieved at runtime)
+docker run --rm -e AWS_REGION=us-east-1 -e RDS_SECRET_ID=travel/dev/rds/etl travel-etl:dev etl/load_processed.py --target rds-secret --bucket geospatial-learning-sergei-2026 --key processed/routing/here/year=2026/month=09/day=06/2026-09-06T23-03-21.654Z-920f5e8e-8148-4578-94dd-6a8d11295693.json
+```
+
+For ECS, use the same script/argument array after the image name as the command override,
+and configure AWS_REGION and RDS_SECRET_ID as task environment variables. The image's
+RDS_SSL_ROOT_CERT default already points to its bundled certificate.
+
+Offline smoke checks (PowerShell, repository root):
+
+```powershell
+etl/.venv/Scripts/python.exe -m unittest discover -s etl/tests -t etl
+docker run --rm --network none travel-etl:dev
+$etlTests = (Resolve-Path etl/tests).Path
+docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --mount "type=bind,source=$etlTests,target=/checks/tests,readonly" travel-etl:dev /checks/tests/container_smoke.py
+docker run --rm --network none --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m --mount "type=bind,source=$etlTests,target=/checks/tests,readonly" -e PYTHONPATH=/app/etl travel-etl:dev -m unittest discover -s /checks/tests -t /checks
+docker image inspect travel-etl:dev --format '{{.Size}} {{.Config.User}} {{.Architecture}}'
+```
+
+The tests are mounted read-only, never baked into the image. `/tmp` is needed only for
+unit-test temporary dotenv fixtures. The smoke script checks user, imports, CA parsing,
+all three CLI help commands, dependency consistency, and absence of private configuration.
+Validated on 2026-09-07: 40 host tests before and after changes, 40 container tests,
+three CLI help checks, and 108 trusted CA certificates. Docker reports image size
+**67,681,726 bytes** for this local linux/amd64 build (`docker image inspect .Size`).
+No ECR push, ECS task creation, AWS infrastructure change or live AWS request is part of
+these checks.

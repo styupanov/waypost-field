@@ -1,0 +1,13 @@
+# Build with etl/ as context. Allow only runtime source and the dependency lock.
+**
+!Dockerfile
+!requirements.lock
+!process_raw.py
+!load_processed.py
+!verify_loaded.py
+!waypost_etl/
+!waypost_etl/**
+**/__pycache__/**
+**/*.pyc
+**/.env*
+**/.aws/**

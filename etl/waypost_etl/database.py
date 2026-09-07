@@ -13,10 +13,14 @@ from .errors import ValidationError
 DEFAULT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env.local"
 
 
-def database_url(env_file=DEFAULT_ENV_FILE, *, target="local"):
+def database_url(env_file=DEFAULT_ENV_FILE, *, target="local", region=None):
+    if target == "rds-secret":
+        # Runtime configuration never reads developer dotenv files or URL fallbacks.
+        from .secret_database import secret_database_url
+        return secret_database_url(region=region)
     # Read only the selected DB settings; never copy other .env values into logs.
     if target not in ("local", "rds"):
-        raise ValidationError("Database target must be local or rds")
+        raise ValidationError("Database target must be local, rds or rds-secret")
     values = None
 
     def setting(name):

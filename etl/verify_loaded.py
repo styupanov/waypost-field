@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 
 import psycopg
 from psycopg.rows import dict_row
@@ -26,10 +27,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bucket", required=True)
     parser.add_argument("--key", required=True)
-    parser.add_argument("--target", choices=("local", "rds"), default="local")
+    parser.add_argument("--target", choices=("local", "rds", "rds-secret"), default="local")
+    parser.add_argument("--region", default=os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION"))
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     args = parser.parse_args()
-    with psycopg.connect(database_url(args.env_file, target=args.target), row_factory=dict_row) as connection:
+    with psycopg.connect(database_url(args.env_file, target=args.target, region=args.region), row_factory=dict_row) as connection:
         connection.execute("SET TRANSACTION READ ONLY")
         database = connection.execute("SELECT current_database() AS name, current_setting('server_version') AS server_version, (SELECT extversion FROM pg_extension WHERE extname='postgis') AS postgis_version, (SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()) AS tls").fetchone()
         rows = connection.execute(VERIFY_SQL, (args.bucket, args.key)).fetchall()

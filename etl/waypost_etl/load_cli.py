@@ -21,7 +21,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Load one S3 processed HERE v2 object into PostgreSQL/PostGIS.")
     parser.add_argument("--bucket", required=True)
     parser.add_argument("--key", required=True)
-    parser.add_argument("--target", choices=("local", "rds"), default="local", help="RDS uses separate RDS_DATABASE_URL and verified TLS")
+    parser.add_argument("--target", choices=("local", "rds", "rds-secret"), default="local", help="rds uses RDS_DATABASE_URL; rds-secret uses Secrets Manager and environment-only settings")
     parser.add_argument("--region", default=os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION"))
     parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE, help="Selected DB settings fallback; defaults to repository .env.local")
     parser.add_argument("--debug", action="store_true", help="Safe traceback locations only")
@@ -29,7 +29,7 @@ def main(argv=None):
     logger = configure_logging()
     fields = {"processedBucket": args.bucket, "processedKey": args.key, "databaseTarget": args.target}
     try:
-        url = database_url(args.env_file, target=args.target)
+        url = database_url(args.env_file, target=args.target, region=args.region)
         with closing(boto3.client("s3", region_name=args.region, config=Config(connect_timeout=10, read_timeout=30, retries={"mode": "standard", "total_max_attempts": 3}))) as s3:
             count = load_object(s3, args.bucket, args.key, url)
         logger.info("load_succeeded", extra={"fields": {**fields, "rowCount": count, "routeCount": count}})

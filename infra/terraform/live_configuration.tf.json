@@ -1,0 +1,287 @@
+{
+  "locals": {
+    "role_configuration": {
+      "task": {
+        "assume_role_policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Sid\": \"\", \"Effect\": \"Allow\", \"Principal\": {\"Service\": \"ecs-tasks.amazonaws.com\"}, \"Action\": \"sts:AssumeRole\"}]}",
+        "path": "/",
+        "description": "Allows ECS tasks to call AWS services on your behalf.",
+        "max_session_duration": 3600,
+        "permissions_boundary": null,
+        "inline_policies": {
+          "travel-dev-etl-task-rolePolicy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Sid\": \"ReadTravelRaw\", \"Effect\": \"Allow\", \"Action\": [\"s3:GetObject\"], \"Resource\": \"arn:aws:s3:::geospatial-learning-sergei-2026/raw/*\"}, {\"Sid\": \"ReadWriteTravelProcessed\", \"Effect\": \"Allow\", \"Action\": [\"s3:GetObject\", \"s3:PutObject\"], \"Resource\": \"arn:aws:s3:::geospatial-learning-sergei-2026/processed/*\"}, {\"Sid\": \"ReadTravelRdsSecret\", \"Effect\": \"Allow\", \"Action\": [\"secretsmanager:GetSecretValue\"], \"Resource\": \"arn:aws:secretsmanager:us-east-1:954976315093:secret:travel/dev/rds/etl-stIWJB\"}]}"
+        },
+        "managed_policy_arns": []
+      },
+      "execution": {
+        "assume_role_policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Sid\": \"\", \"Effect\": \"Allow\", \"Principal\": {\"Service\": \"ecs-tasks.amazonaws.com\"}, \"Action\": \"sts:AssumeRole\"}]}",
+        "path": "/",
+        "description": "Allows ECS tasks to call AWS services on your behalf.",
+        "max_session_duration": 3600,
+        "permissions_boundary": null,
+        "inline_policies": {},
+        "managed_policy_arns": [
+          "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+        ]
+      },
+      "stepfunctions": {
+        "assume_role_policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Sid\": \"\", \"Effect\": \"Allow\", \"Principal\": {\"Service\": \"states.amazonaws.com\"}, \"Action\": \"sts:AssumeRole\"}]}",
+        "path": "/",
+        "description": "Allows Step Functions to access AWS resources on your behalf.",
+        "max_session_duration": 3600,
+        "permissions_boundary": null,
+        "inline_policies": {
+          "travel-dev-etl-stepfunctions-policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Sid\": \"RunTravelEtlTasks\", \"Effect\": \"Allow\", \"Action\": \"ecs:RunTask\", \"Resource\": \"arn:aws:ecs:us-east-1:954976315093:task-definition/travel-dev-etl:*\"}, {\"Sid\": \"ManageStartedEcsTasks\", \"Effect\": \"Allow\", \"Action\": [\"ecs:DescribeTasks\", \"ecs:StopTask\"], \"Resource\": \"*\"}, {\"Sid\": \"PassTravelEtlRoles\", \"Effect\": \"Allow\", \"Action\": \"iam:PassRole\", \"Resource\": [\"arn:aws:iam::954976315093:role/travel-dev-etl-task-role\", \"arn:aws:iam::954976315093:role/travel-dev-etl-execution-role\"], \"Condition\": {\"StringEquals\": {\"iam:PassedToService\": \"ecs-tasks.amazonaws.com\"}}}, {\"Sid\": \"EcsSyncEvents\", \"Effect\": \"Allow\", \"Action\": [\"events:PutTargets\", \"events:PutRule\", \"events:DescribeRule\"], \"Resource\": \"arn:aws:events:us-east-1:954976315093:rule/StepFunctionsGetEventsForECSTaskRule\"}]}"
+        },
+        "managed_policy_arns": []
+      },
+      "eventbridge": {
+        "assume_role_policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Effect\": \"Allow\", \"Principal\": {\"Service\": \"events.amazonaws.com\"}, \"Action\": \"sts:AssumeRole\"}]}",
+        "path": "/",
+        "description": "",
+        "max_session_duration": 3600,
+        "permissions_boundary": null,
+        "inline_policies": {
+          "travel-dev-etl-eventbridge-rolePolicy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Sid\": \"StartTravelEtlPipeline\", \"Effect\": \"Allow\", \"Action\": \"states:StartExecution\", \"Resource\": \"arn:aws:states:us-east-1:954976315093:stateMachine:travel-dev-etl-pipeline\"}]}"
+        },
+        "managed_policy_arns": []
+      }
+    },
+    "workflow_definition": {
+      "Comment": "TRAVEL geospatial ETL pipeline",
+      "StartAt": "SplitRawKey",
+      "States": {
+        "SplitRawKey": {
+          "Type": "Pass",
+          "Parameters": {
+            "bucket.$": "$.bucket",
+            "rawKey.$": "$.rawKey",
+            "keyParts.$": "States.StringSplit($.rawKey, '/')"
+          },
+          "Next": "PrepareInput"
+        },
+        "PrepareInput": {
+          "Type": "Pass",
+          "Parameters": {
+            "bucket.$": "$.bucket",
+            "rawKey.$": "$.rawKey",
+            "processedKey.$": "States.Format('processed/{}/{}/{}/{}/{}/{}', $.keyParts[1], $.keyParts[2], $.keyParts[3], $.keyParts[4], $.keyParts[5], $.keyParts[6])"
+          },
+          "Next": "ProcessRawToProcessed"
+        },
+        "ProcessRawToProcessed": {
+          "Type": "Task",
+          "Resource": "arn:aws:states:::ecs:runTask.sync",
+          "TimeoutSeconds": 900,
+          "Parameters": {
+            "Cluster": "arn:aws:ecs:us-east-1:954976315093:cluster/travel-dev-etl-cluster",
+            "TaskDefinition": "arn:aws:ecs:us-east-1:954976315093:task-definition/travel-dev-etl:1",
+            "LaunchType": "FARGATE",
+            "NetworkConfiguration": {
+              "AwsvpcConfiguration": {
+                "Subnets": [
+                  "subnet-03758b1f5545b9fd8",
+                  "subnet-0d400a6ca7d6db5c7"
+                ],
+                "SecurityGroups": [
+                  "sg-06ee833ccc47678ba"
+                ],
+                "AssignPublicIp": "ENABLED"
+              }
+            },
+            "Overrides": {
+              "ContainerOverrides": [
+                {
+                  "Name": "travel-etl",
+                  "Command.$": "States.Array('etl/process_raw.py', '--bucket', $.bucket, '--key', $.rawKey)"
+                }
+              ]
+            }
+          },
+          "Retry": [
+            {
+              "ErrorEquals": [
+                "AmazonECS.Unknown"
+              ],
+              "IntervalSeconds": 5,
+              "MaxAttempts": 2,
+              "BackoffRate": 2,
+              "JitterStrategy": "FULL"
+            },
+            {
+              "ErrorEquals": [
+                "States.Timeout"
+              ],
+              "IntervalSeconds": 10,
+              "MaxAttempts": 1,
+              "BackoffRate": 2
+            },
+            {
+              "ErrorEquals": [
+                "States.TaskFailed"
+              ],
+              "IntervalSeconds": 10,
+              "MaxAttempts": 2,
+              "BackoffRate": 2,
+              "JitterStrategy": "FULL"
+            }
+          ],
+          "Catch": [
+            {
+              "ErrorEquals": [
+                "States.ALL"
+              ],
+              "ResultPath": "$.error",
+              "Next": "ProcessRawFailed"
+            }
+          ],
+          "ResultPath": null,
+          "Next": "LoadProcessedToRds"
+        },
+        "LoadProcessedToRds": {
+          "Type": "Task",
+          "Resource": "arn:aws:states:::ecs:runTask.sync",
+          "TimeoutSeconds": 900,
+          "Parameters": {
+            "Cluster": "arn:aws:ecs:us-east-1:954976315093:cluster/travel-dev-etl-cluster",
+            "TaskDefinition": "arn:aws:ecs:us-east-1:954976315093:task-definition/travel-dev-etl:1",
+            "LaunchType": "FARGATE",
+            "NetworkConfiguration": {
+              "AwsvpcConfiguration": {
+                "Subnets": [
+                  "subnet-03758b1f5545b9fd8",
+                  "subnet-0d400a6ca7d6db5c7"
+                ],
+                "SecurityGroups": [
+                  "sg-06ee833ccc47678ba"
+                ],
+                "AssignPublicIp": "ENABLED"
+              }
+            },
+            "Overrides": {
+              "ContainerOverrides": [
+                {
+                  "Name": "travel-etl",
+                  "Command.$": "States.Array('etl/load_processed.py', '--target', 'rds-secret', '--bucket', $.bucket, '--key', $.processedKey)"
+                }
+              ]
+            }
+          },
+          "Retry": [
+            {
+              "ErrorEquals": [
+                "AmazonECS.Unknown"
+              ],
+              "IntervalSeconds": 5,
+              "MaxAttempts": 2,
+              "BackoffRate": 2,
+              "JitterStrategy": "FULL"
+            },
+            {
+              "ErrorEquals": [
+                "States.Timeout"
+              ],
+              "IntervalSeconds": 10,
+              "MaxAttempts": 1,
+              "BackoffRate": 2
+            },
+            {
+              "ErrorEquals": [
+                "States.TaskFailed"
+              ],
+              "IntervalSeconds": 10,
+              "MaxAttempts": 2,
+              "BackoffRate": 2,
+              "JitterStrategy": "FULL"
+            }
+          ],
+          "Catch": [
+            {
+              "ErrorEquals": [
+                "States.ALL"
+              ],
+              "ResultPath": "$.error",
+              "Next": "LoadProcessedFailed"
+            }
+          ],
+          "ResultPath": null,
+          "End": true
+        },
+        "ProcessRawFailed": {
+          "Type": "Fail",
+          "Error": "ProcessRawFailed",
+          "Cause": "RAW to PROCESSED processing failed after retries"
+        },
+        "LoadProcessedFailed": {
+          "Type": "Fail",
+          "Error": "LoadProcessedFailed",
+          "Cause": "PROCESSED to RDS loading failed after retries"
+        }
+      }
+    },
+    "live_container": {
+      "name": "travel-etl",
+      "image": "954976315093.dkr.ecr.us-east-1.amazonaws.com/travel-dev-etl:dev",
+      "cpu": 0,
+      "portMappings": [],
+      "essential": true,
+      "environment": [
+        {
+          "name": "RDS_SSL_ROOT_CERT",
+          "value": "/app/certs/global-bundle.pem"
+        },
+        {
+          "name": "AWS_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "RDS_SECRET_ID",
+          "value": "travel/dev/rds/etl"
+        }
+      ],
+      "environmentFiles": [],
+      "mountPoints": [],
+      "volumesFrom": [],
+      "ulimits": [],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/travel-dev-etl",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        },
+        "secretOptions": []
+      },
+      "systemControls": []
+    },
+    "sns_policy": {
+      "Version": "2008-10-17",
+      "Id": "__default_policy_ID",
+      "Statement": [
+        {
+          "Sid": "__default_statement_ID",
+          "Effect": "Allow",
+          "Principal": {
+            "AWS": "*"
+          },
+          "Action": [
+            "SNS:GetTopicAttributes",
+            "SNS:SetTopicAttributes",
+            "SNS:AddPermission",
+            "SNS:RemovePermission",
+            "SNS:DeleteTopic",
+            "SNS:Subscribe",
+            "SNS:ListSubscriptionsByTopic",
+            "SNS:Publish"
+          ],
+          "Resource": "arn:aws:sns:us-east-1:954976315093:travel-dev-etl-alerts",
+          "Condition": {
+            "StringEquals": {
+              "AWS:SourceOwner": "954976315093"
+            }
+          }
+        }
+      ]
+    },
+    "event_input_template": "{\n  \"bucket\": <bucket>,\n  \"rawKey\": <rawKey>\n}"
+  }
+}

@@ -49,3 +49,16 @@ __pycache__/
 /etl/.venv/
 
 .env.rds.local
+
+# Terraform local state, downloaded providers and private reconciliation inputs
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+/infra/terraform/*.tfvars
+!/infra/terraform/workflow.example.tfvars
+/infra/terraform/*.auto.tfvars.json
+/infra/terraform/terraform.tfvars.json
+# Commit .terraform.lock.hcl after a reviewed terraform init.

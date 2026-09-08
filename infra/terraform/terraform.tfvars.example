@@ -1,0 +1,7 @@
+aws_region = "us-east-1"
+image_tag  = "dev"
+# Defaults now match live inspection. No private inputs are required for adoption.
+container_name  = "travel-etl"
+event_target_id = "Idbfdbec94-dc0c-4eee-855a-222f4406c067"
+# Live IAM/ASL metadata is versioned in live_configuration.tf.json (no secrets).
+# Do not load workflow.example.tfvars: it is a historical illustration only.

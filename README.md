@@ -42,6 +42,46 @@ read/list access, inspect the new object under the current UTC date and verify t
 original response body. Disable ingestion afterward if only testing.
 `npm run test:here-routing` and `npm run test:raw-provider-archive` make no real AWS calls.
 
+## Production web container
+
+Build the standalone Next.js application from the repository root:
+
+```powershell
+docker build --platform linux/amd64 -t waypost-web:local .
+```
+
+The runtime image contains the traced standalone server, `public/` assets, and compiled
+Next.js static assets. It runs as UID/GID `1001:1001`, listens on `0.0.0.0`, accepts `PORT`
+at runtime, logs to stdout/stderr, and exposes `GET /api/health` without contacting the
+database or an external provider.
+
+For local Windows testing against Valhalla published on host port 8002, use
+`host.docker.internal`; `localhost` inside the web container refers to that container:
+
+```powershell
+docker run --rm --name waypost-web -p 3000:3000 `
+  -e PORT=3000 `
+  -e VALHALLA_URL=http://host.docker.internal:8002 `
+  -e DATABASE_URL=<local-container-reachable-postgres-url> `
+  -e AUTH_SECRET=<development-auth-secret> `
+  -e AUTH_TRUST_HOST=true `
+  waypost-web:local
+```
+
+Provider features additionally require `HERE_API_KEY`, `GOOGLE_MAPS_API_KEY`,
+`GEMINI_API_KEY`, and `GEMINI_MODEL`. Raw HERE archiving is opt-in through
+`RAW_PROVIDER_ARCHIVE_ENABLED`, `RAW_PROVIDER_ARCHIVE_BUCKET`, and `AWS_REGION`; local
+containers can receive AWS credentials through an explicit development-only mount or
+credential source. Deployed containers must omit `AWS_PROFILE` and use their ECS task role.
+Local credential authentication also remains opt-in through the documented
+`LOCAL_AUTH_*` settings. No application environment variable uses a `NEXT_PUBLIC_` prefix,
+so provider keys and database/auth configuration are server-only and are not embedded in
+browser JavaScript.
+
+Set `AUTH_TRUST_HOST=true` only when the container is behind the deployment's trusted ingress
+(or for the local published-port smoke test). Keep the default false for untrusted direct-host
+deployments.
+
 ## Learn More
 
 For standalone Python processing of archived HERE responses into S3 analytics records,

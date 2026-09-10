@@ -5,6 +5,7 @@
 !process_raw.py
 !load_processed.py
 !verify_loaded.py
+!write_route_parquet.py
 !waypost_etl/
 !waypost_etl/**
 **/__pycache__/**

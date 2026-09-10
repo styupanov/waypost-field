@@ -16,7 +16,7 @@ RUN python -c "import hashlib,pathlib,ssl,urllib.request; data=urllib.request.ur
 
 RUN groupadd --gid 10001 etl && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin etl
 COPY waypost_etl/ /app/etl/waypost_etl/
-COPY process_raw.py load_processed.py verify_loaded.py /app/etl/
+COPY process_raw.py load_processed.py verify_loaded.py write_route_parquet.py /app/etl/
 USER 10001:10001
 
 # ECS command overrides include the script path followed by its normal CLI arguments.

@@ -127,6 +127,65 @@ infrastructure deployment. Processed analytics still derive from provider-contro
 apply the appropriate retention policy to both raw and processed prefixes. This work does
 not configure or change bucket policies, lifecycle rules, or other AWS infrastructure.
 
+## Route analytics GeoParquet
+
+`write_route_parquet.py` derives a query-oriented dataset from one canonical processed HERE
+v2 JSON object. Processed JSON remains the validated exchange record used by the PostGIS
+loader; analytics GeoParquet is a compact columnar projection with one row per route. It
+reuses `validate_processed` and its existing GeoJSON LineString, so HERE flexible polylines
+are not decoded a second time.
+
+The analytics schema is:
+
+| Column | Arrow/Parquet type | Nullable |
+| --- | --- | --- |
+| `analytics_schema_version` | int16 | no |
+| `provider` | string | no |
+| `route_index` | int32 | no |
+| `fetched_at`, `processed_at` | timestamp[us, UTC] | no |
+| `transform_version` | string | no |
+| `section_count` | int32 | no |
+| `distance_meters`, `duration_seconds`, `base_duration_seconds` | int64 | yes |
+| `raw_s3_bucket`, `raw_s3_key` | string | no |
+| `processed_s3_bucket`, `processed_s3_key` | string | no |
+| `geometry` | binary WKB LineString | no |
+
+`analytics_schema_version` is both a column and file metadata
+`waypost:analytics_schema_version`, allowing row-level inspection and early file-level
+compatibility checks. GeoParquet 1.1 `geo` metadata identifies `geometry` as the primary WKB
+column, limits geometry type to LineString, and carries the EPSG:4326 PROJJSON definition.
+Coordinates retain GeoJSON `[longitude, latitude]` order. ZSTD compression is used.
+
+The deterministic key replaces the processed dataset root and extension while preserving the
+UTC `fetched_at` date partition and source-object name:
+
+```text
+processed/routing/here/year=YYYY/month=MM/day=DD/<source-object-id>.json
+analytics/routing/routes/year=YYYY/month=MM/day=DD/<source-object-id>.parquet
+```
+
+The processed validator proves that the source key partition agrees with `fetched_at`; no
+route-ID or other high-cardinality partition is introduced. Repeating a command overwrites
+the same logical S3 object rather than creating duplicate keys. Every row contains both raw
+and processed bucket/key lineage.
+
+Run from the repository root using the default boto3 credential chain:
+
+```powershell
+$env:AWS_PROFILE = "travel-dev"
+$env:AWS_REGION = "us-east-1"
+etl/.venv/Scripts/python.exe etl/write_route_parquet.py `
+  --bucket geospatial-learning-sergei-2026 `
+  --key processed/routing/here/year=2026/month=09/day=06/2026-09-06T23-03-21.654Z-920f5e8e-8148-4578-94dd-6a8d11295693.json
+```
+
+The identity needs `s3:GetObject` on the specified processed object and `s3:PutObject`
+on the deterministic analytics key, plus KMS permissions if the bucket policy requires them.
+Structured events are `analytics_started`, `processed_validated`, `parquet_built`, and
+`analytics_written`; the CLI also emits `analytics_succeeded` or a sanitized
+`analytics_failed`. Invalid input or S3 failure exits 1. Logs never contain geometry,
+credentials, secret values, provider payloads, or request URLs.
+
 ## Load processed HERE into local PostGIS
 
 `load_processed.py` reads one specified S3 object using boto3 and writes its validated
@@ -381,6 +440,8 @@ The official `python:3.13-slim-bookworm` base is pinned by digest (Python 3.13.1
 validated build). `requirements.lock` pins all Linux runtime dependencies within the
 existing `requirements.txt` ranges. Only binary wheels are installed; there is no compiler,
 AWS CLI, Node runtime or added development dependency. Pip caches are not retained.
+GeoParquet adds pinned `pyarrow`, `shapely`, and Shapely's `numpy` runtime dependency; all
+three have CPython 3.13 linux/amd64 wheels and require no compiler in the image.
 
 The build downloads the public bundle from
 `https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem`, checks SHA-256
@@ -407,6 +468,9 @@ docker run --rm -e AWS_REGION=us-east-1 travel-etl:dev etl/process_raw.py --buck
 
 # PROCESSED -> RDS (verified TLS, secret retrieved at runtime)
 docker run --rm -e AWS_REGION=us-east-1 -e RDS_SECRET_ID=travel/dev/rds/etl travel-etl:dev etl/load_processed.py --target rds-secret --bucket geospatial-learning-sergei-2026 --key processed/routing/here/year=2026/month=09/day=06/2026-09-06T23-03-21.654Z-920f5e8e-8148-4578-94dd-6a8d11295693.json
+
+# PROCESSED -> route analytics GeoParquet
+docker run --rm -e AWS_REGION=us-east-1 travel-etl:dev etl/write_route_parquet.py --bucket geospatial-learning-sergei-2026 --key processed/routing/here/year=2026/month=09/day=06/2026-09-06T23-03-21.654Z-920f5e8e-8148-4578-94dd-6a8d11295693.json
 ```
 
 For ECS, use the same script/argument array after the image name as the command override,
@@ -426,9 +490,9 @@ docker image inspect travel-etl:dev --format '{{.Size}} {{.Config.User}} {{.Arch
 
 The tests are mounted read-only, never baked into the image. `/tmp` is needed only for
 unit-test temporary dotenv fixtures. The smoke script checks user, imports, CA parsing,
-all three CLI help commands, dependency consistency, and absence of private configuration.
-Validated on 2026-09-07: 40 host tests before and after changes, 40 container tests,
-three CLI help checks, and 108 trusted CA certificates. Docker reports image size
-**67,681,726 bytes** for this local linux/amd64 build (`docker image inspect .Size`).
+all four CLI help commands, a GeoParquet write/read round-trip, dependency consistency, and
+absence of private configuration. Validated on 2026-09-10: 48 host tests, 48 container tests,
+four CLI help checks, and 108 trusted CA certificates. Docker reports image size
+**143,872,959 bytes** for this local linux/amd64 build (`docker image inspect .Size`).
 No ECR push, ECS task creation, AWS infrastructure change or live AWS request is part of
 these checks.

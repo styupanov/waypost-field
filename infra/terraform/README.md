@@ -120,3 +120,15 @@ destruction. Do not remove `skip_destroy`, freeze the ASL as an opaque string, o
 `ignore_changes` merely to suppress these plan lines. No apply was performed during adoption.
 
 [READ_ONLY_COMMANDS.md](READ_ONLY_COMMANDS.md) records every AWS CLI command executed.
+
+## Glue analytics catalog
+
+Terraform now manages the existing Glue catalog database `travel_analytics` and external
+table `travel_analytics.routes`. The table reads route-level GeoParquet from
+`s3://geospatial-learning-sergei-2026/analytics/routing/routes/` and exposes `geometry` to
+Athena as binary WKB. Spatial SQL can construct geometry with
+`ST_GeomFromBinary(geometry)`.
+
+The table uses projected `year`, `month`, and `day` partitions. Individual partitions are
+not Terraform resources, and projected future dates require no `MSCK REPAIR TABLE`. The
+GeoParquet files themselves remain S3 application data outside Terraform ownership.

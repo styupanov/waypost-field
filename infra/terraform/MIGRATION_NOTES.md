@@ -360,3 +360,28 @@ aws_sfn_state_machine.pipeline: definition JSON serialization/whitespace only
 The repository intentionally keeps both protections visible: `skip_destroy` is not removed,
 and state-machine `definition` remains drift-detectable rather than hidden with
 `ignore_changes`. No destructive or replacement action is proposed, and no apply was run.
+
+## Glue analytics adoption (2026-09-10)
+
+Read-only Glue inspection captured the existing `travel_analytics` database and
+`travel_analytics.routes` external Parquet table. A checksum-verified backup of both local
+state files was created under
+`.terraform/state-backups/before-glue-imports-20260910-153305/` before either import.
+
+The database and table were imported separately:
+
+```text
+terraform import aws_glue_catalog_database.analytics 954976315093:travel_analytics
+terraform import aws_glue_catalog_table.routes 954976315093:travel_analytics:routes
+```
+
+State counts advanced from 18 to 19 to 20. Each targeted plan returned detailed exit code
+0 and `No changes. Your infrastructure matches the configuration.` The table retains its
+15 route-level columns, `geometry` as binary WKB, three string partition keys, and exact
+integer projection settings for 2026–2030. Its projected location template points to the
+Hive-style year/month/day prefixes, so Glue partition resources and `MSCK REPAIR` are not
+needed for future dates.
+
+Terraform manages only the Glue catalog database/table metadata. GeoParquet S3 objects,
+partitions, crawlers, Athena workgroups and query-result settings remain unmanaged. No apply,
+Athena query, S3 mutation, crawler operation, partition creation or secret retrieval occurred.

@@ -1,4 +1,25 @@
-# Reconciled import plan — proposed commands only
+# Reconciled import plan
+
+## Glue analytics adoption (completed 2026-09-10)
+
+The existing Glue database and table are now imported at these addresses:
+
+```text
+aws_glue_catalog_database.analytics
+aws_glue_catalog_table.routes
+```
+
+Executed import commands:
+
+```text
+terraform import aws_glue_catalog_database.analytics 954976315093:travel_analytics
+terraform import aws_glue_catalog_table.routes 954976315093:travel_analytics:routes
+```
+
+Both targeted plans returned detailed exit code 0 with no changes. GeoParquet objects under
+`s3://geospatial-learning-sergei-2026/analytics/routing/routes/` remain data and are not
+Terraform resources. Glue partitions are intentionally unmanaged; the table uses partition
+projection, so future date partitions do not require `MSCK REPAIR TABLE`.
 
 The ETL task role `aws_iam_role.etl["task"]` is now imported and its targeted plan returned
 0. Do not rerun its role import. Its standalone inline policy remains unimported.

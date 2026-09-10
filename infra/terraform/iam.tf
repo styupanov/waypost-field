@@ -17,7 +17,17 @@ resource "aws_iam_role_policy" "etl" {
   for_each = local.inline_policies
   name     = each.value.name
   role     = aws_iam_role.etl[each.value.role].name
-  policy   = each.value.policy
+  policy = each.key == "task/travel-dev-etl-task-rolePolicy" ? jsonencode(merge(
+    jsondecode(each.value.policy),
+    {
+      Statement = concat(jsondecode(each.value.policy).Statement, [{
+        Sid      = "WriteTravelRouteAnalytics"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = "arn:aws:s3:::geospatial-learning-sergei-2026/analytics/routing/routes/*"
+      }])
+    }
+  )) : each.value.policy
   lifecycle {
     prevent_destroy = true
   }

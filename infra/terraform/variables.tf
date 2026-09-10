@@ -5,7 +5,7 @@ variable "aws_region" {
 
 variable "image_tag" {
   type    = string
-  default = "dev"
+  default = "2e950b8fabc4d6c9c7e948a13740b05c578b04af"
 }
 
 variable "container_name" {

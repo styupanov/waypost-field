@@ -56,7 +56,6 @@ resource "aws_ecs_task_definition" "etl" {
       }
     })
   })])
-  lifecycle {
-    prevent_destroy = true
-  }
+  # Task definitions are immutable: an image change intentionally registers a new revision.
+  # skip_destroy keeps the prior revision registered when Terraform replaces this instance.
 }

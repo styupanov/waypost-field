@@ -45,3 +45,18 @@ variable "secret_id" {
   default = "travel/dev/rds/etl"
 }
 
+variable "web_image_tag" {
+  type    = string
+  default = "f04a799f48de2ea4047e3a507fb8369a52f0195c"
+}
+
+variable "web_secret_arn" {
+  type    = string
+  default = "arn:aws:secretsmanager:us-east-1:954976315093:secret:travel/dev/web-QHuy98"
+}
+
+variable "rds_security_group_id" {
+  type    = string
+  default = "sg-0ec9eb56e2c29d03b"
+}
+

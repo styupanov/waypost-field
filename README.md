@@ -16,6 +16,13 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+Migrated routing paths select their server-side provider with `ROUTING_PROVIDER`. The
+safe default is `valhalla`. For local HERE mode set `ROUTING_PROVIDER=here` and provide
+`HERE_API_KEY`. To retain the local fallback set `ROUTING_PROVIDER=valhalla` and
+`VALHALLA_URL=http://localhost:8002`. During the staged migration, overnight timing,
+multi-day composition, attraction bulk validation, and the Explore screening matrix
+continue to use Valhalla directly.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

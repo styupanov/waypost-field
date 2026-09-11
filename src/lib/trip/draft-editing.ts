@@ -1,5 +1,5 @@
 import "server-only";
-import { calculateRoute } from "@/lib/routing/valhalla";
+import { routingProvider } from "@/lib/routing/provider";
 import {
   calculateRouteProgress,
   suggestedVisitDuration,
@@ -161,7 +161,7 @@ export async function editTripDraft(
     ...stops.map((stop) => stop.coordinates),
     draft.destination.coordinates,
   ];
-  const nextRoute = await calculateRoute(locations);
+  const nextRoute = await routingProvider.route(locations);
   const rawBaselineDetour =
     nextRoute.summary.durationSeconds - draft.baselineSummary.durationSeconds;
 

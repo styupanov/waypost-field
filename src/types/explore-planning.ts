@@ -25,7 +25,7 @@ export type ExploreTripIdea = {
     visitDuration: VisitDuration | null;
     qualityScore: number;
   };
-  route: { distanceMeters: number; durationSeconds: number; provider: "valhalla" };
+  route: { distanceMeters: number; durationSeconds: number; provider: "here" | "valhalla" };
 };
 
 export type ExploreIdeasResponse = {

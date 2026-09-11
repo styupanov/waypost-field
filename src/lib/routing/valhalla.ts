@@ -147,7 +147,7 @@ export async function calculateTimedRoute(locations: RoutePoint[]): Promise<Time
   return requestRoute(locations, true) as Promise<TimedRouteResponse>;
 }
 
-async function requestMatrix(sources: RoutePoint[], targets: RoutePoint[]): Promise<RouteMatrixCell[][]> {
+export async function calculateMatrix(sources: RoutePoint[], targets: RoutePoint[]): Promise<RouteMatrixCell[][]> {
   const baseUrl = process.env.VALHALLA_URL ?? LOCAL_VALHALLA_URL;
   let response: Response;
   try {
@@ -170,7 +170,7 @@ export async function calculateReturnTripMatrix(origin: RoutePoint, destinations
   const wallStarted = performance.now();
   const measured = async (direction: "outboundMatrixMs" | "inboundMatrixMs", sources: RoutePoint[], targets: RoutePoint[]) => {
     const started = performance.now();
-    try { return await requestMatrix(sources, targets); }
+    try { return await calculateMatrix(sources, targets); }
     finally { if (timings) timings[direction] = performance.now() - started; }
   };
   const [outbound, inbound] = await Promise.all([

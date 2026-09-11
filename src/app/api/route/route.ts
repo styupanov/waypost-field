@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { calculateRoute, RoutingServiceError } from "@/lib/routing/valhalla";
+import { routingProvider, RoutingProviderError } from "@/lib/routing/provider";
 import type { RoutePoint } from "@/types/route";
 
 function isValidPoint(value: unknown): value is RoutePoint {
@@ -17,11 +17,11 @@ export async function POST(request: Request) {
     if (!Array.isArray(body.locations) || body.locations.length < 2 || !body.locations.every(isValidPoint)) {
       return NextResponse.json({ error: "At least two valid locations are required." }, { status: 400 });
     }
-    return NextResponse.json(await calculateRoute(body.locations));
+    return NextResponse.json(await routingProvider.route(body.locations));
   } catch (reason) {
-    if (reason instanceof RoutingServiceError) {
+    if (reason instanceof RoutingProviderError) {
       console.error("Route generation failed.");
-      return NextResponse.json({ error: "Valhalla routing request failed." }, { status: reason.statusCode });
+      return NextResponse.json({ error: "Routing request failed." }, { status: reason.statusCode });
     }
     console.error("Unexpected route API error.");
     return NextResponse.json({ error: "Internal routing error." }, { status: 500 });

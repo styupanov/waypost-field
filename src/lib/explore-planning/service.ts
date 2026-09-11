@@ -1,5 +1,6 @@
 import "server-only";
-import { calculateReturnTripMatrix, calculateRoute, type RouteMatrixTimings } from "@/lib/routing/valhalla";
+import { routingProvider, activeRoutingProviderName, type RoutingProviderName } from "@/lib/routing/provider";
+import { calculateReturnTripMatrix, type RouteMatrixTimings } from "@/lib/routing/valhalla";
 import { mapRawAttractionCategory } from "@/lib/attractions/category-mapping";
 import { parseVisitDuration } from "@/lib/attractions/duration";
 import { exploreCategoryLabel, findExploreAttractionCandidates, type ExploreAttractionCandidate } from "@/lib/explore-planning/repository";
@@ -9,9 +10,10 @@ import type { ExploreIdeasResponse, ExplorePlanningRequest, ExploreTripIdea } fr
 type Dependencies = {
   findCandidates: typeof findExploreAttractionCandidates;
   calculateMatrix: typeof calculateReturnTripMatrix;
-  calculateExactRoute: typeof calculateRoute;
+  calculateExactRoute: typeof routingProvider.route;
+  exactRouteProvider: () => RoutingProviderName;
 };
-const defaults: Dependencies = { findCandidates: findExploreAttractionCandidates, calculateMatrix: calculateReturnTripMatrix, calculateExactRoute: calculateRoute };
+const defaults: Dependencies = { findCandidates: findExploreAttractionCandidates, calculateMatrix: calculateReturnTripMatrix, calculateExactRoute: routingProvider.route, exactRouteProvider: activeRoutingProviderName };
 
 export type ExploreStageTimings = {
   h3BoundaryMs: number; candidateRepositoryMs: number; candidateRowCount: number; candidateShortlistCount: number;
@@ -25,7 +27,7 @@ export function emptyExploreStageTimings(): ExploreStageTimings {
   return { h3BoundaryMs: 0, candidateRepositoryMs: 0, candidateRowCount: 0, candidateShortlistCount: 0, candidateCanonicalMappingMs: 0, candidateFilteringMs: 0, candidateStaticScoringMs: 0, candidateSortingMs: 0, candidateResultMappingMs: 0, matrixPreparationMs: 0, outboundMatrixMs: 0, inboundMatrixMs: 0, matrixWallClockMs: 0, exactRouteCallCount: 0, sumIndividualExactRouteMs: 0, exactRoutingWallClockMs: 0, resultRankingMs: 0 };
 }
 
-function ideaFrom(candidate: ExploreAttractionCandidate, response: Awaited<ReturnType<typeof calculateRoute>>) {
+function ideaFrom(candidate: ExploreAttractionCandidate, response: Awaited<ReturnType<typeof routingProvider.route>>, provider: RoutingProviderName) {
   return {
     id: String(candidate.id),
     destination: {
@@ -35,7 +37,7 @@ function ideaFrom(candidate: ExploreAttractionCandidate, response: Awaited<Retur
       rating: candidate.rating, reviewCount: candidate.reviewCount, duration: candidate.duration,
       visitDuration: parseVisitDuration(candidate.duration), qualityScore: candidate.qualityScore,
     },
-    route: { distanceMeters: Math.round(response.summary.distanceKm * 1000), durationSeconds: response.summary.durationSeconds, provider: "valhalla" as const },
+    route: { distanceMeters: Math.round(response.summary.distanceKm * 1000), durationSeconds: response.summary.durationSeconds, provider },
     qualityScore: candidate.qualityScore,
   };
 }
@@ -81,9 +83,10 @@ export async function generateExploreIdeasWithDependencies(input: ExplorePlannin
       exactRouteCallCount += 1;
       const individualStarted = performance.now();
       try {
+        const provider = dependencies.exactRouteProvider();
         const response = await dependencies.calculateExactRoute([origin, { lat: candidate.latitude, lon: candidate.longitude }, origin]);
         if (!exploreRouteFitsBudget(response.summary.durationSeconds, budget)) { exactOverBudget += 1; return null; }
-        return ideaFrom(candidate, response);
+        return ideaFrom(candidate, response, provider);
       } catch { routingFailures += 1; return null; }
       finally { timings.sumIndividualExactRouteMs += performance.now() - individualStarted; }
     });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { DraftEditError, editTripDraft } from "@/lib/trip/draft-editing";
-import { RoutingServiceError } from "@/lib/routing/valhalla";
+import { RoutingProviderError } from "@/lib/routing/provider";
 import type { DraftEditAction, TripDraft } from "@/types/trip";
 import { authenticatedWaypostUserId } from "@/lib/auth/session";
 import { assertTripOwnership, saveOwnedCurrentDraftVersion } from "@/lib/trips/repository";
@@ -82,7 +82,7 @@ export async function POST(request: Request) {
     if (reason instanceof DraftEditError) {
       return errorResponse("DRAFT_EDIT_CONFLICT", reason.message, 400);
     }
-    if (reason instanceof RoutingServiceError) {
+    if (reason instanceof RoutingProviderError) {
       console.error("Draft edit routing failed.");
       return errorResponse("ROUTING_UNAVAILABLE", "The edited draft route could not be generated.", reason.statusCode);
     }

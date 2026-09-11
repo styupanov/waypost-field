@@ -1,4 +1,5 @@
 import type { FinalRoutePreview } from "../../types/final-route.ts";
+import type { RouteResponse } from "../../types/route.ts";
 
 const FLEXIBLE_POLYLINE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
@@ -36,7 +37,13 @@ export function decodeFlexiblePolyline(encoded: string): [number, number][] {
   return coordinates;
 }
 
-type HereSection = { polyline?: unknown; summary?: { length?: unknown; duration?: unknown; baseDuration?: unknown } };
+type HereSpan = { roadAttributes?: unknown };
+type HereSection = {
+  polyline?: unknown;
+  summary?: { length?: unknown; duration?: unknown; baseDuration?: unknown };
+  spans?: HereSpan[];
+  transport?: { mode?: unknown };
+};
 type HerePayload = { routes?: { sections?: HereSection[] }[] };
 
 function nonNegative(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value) && value >= 0; }
@@ -68,4 +75,44 @@ export function normalizeHereResponse(payload: unknown, waypointCount: number, r
   const coordinates = concatenateSectionCoordinates(decodedSections);
   if (coordinates.length < 2 || !nonNegative(lengthMeters) || !nonNegative(durationSeconds)) throw new Error("HERE returned invalid route totals.");
   return { provider: "here", route: { type: "LineString", coordinates }, summary: { distanceKm: lengthMeters / 1000, durationSeconds, baseDurationSeconds: hasBaseDuration ? baseDurationSeconds : null }, diagnostics: { sectionCount: sections.length, waypointCount, requestDurationMilliseconds } };
+}
+
+function routeFlag(sections: HereSection[], attribute: "tollway" | "controlledAccess") {
+  return sections.some((section) => section.spans?.some((span) =>
+    Array.isArray(span.roadAttributes) && span.roadAttributes.includes(attribute)
+  ));
+}
+
+// Waypost treats a highway as a controlled-access road. This conservative
+// HERE definition can be narrower than historical Valhalla has_highway values.
+export function normalizeHerePlanningResponse(payload: unknown): RouteResponse {
+  const routes = (payload as HerePayload | null)?.routes;
+  const sections = routes?.[0]?.sections;
+  if (!sections?.length) throw new Error("HERE returned no route sections.");
+  const decodedSections: [number, number][][] = [];
+  let lengthMeters = 0;
+  let durationSeconds = 0;
+  for (const section of sections) {
+    if (typeof section.polyline !== "string" || !section.summary ||
+      !nonNegative(section.summary.length) || !nonNegative(section.summary.duration)) {
+      throw new Error("HERE returned an incomplete route section.");
+    }
+    const decoded = decodeFlexiblePolyline(section.polyline);
+    if (decoded.length < 2) throw new Error("HERE returned invalid route geometry.");
+    decodedSections.push(decoded);
+    lengthMeters += section.summary.length;
+    durationSeconds += section.summary.duration;
+  }
+  const coordinates = concatenateSectionCoordinates(decodedSections);
+  if (coordinates.length < 2) throw new Error("HERE returned invalid route geometry.");
+  return {
+    route: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates } },
+    summary: {
+      distanceKm: lengthMeters / 1000,
+      durationSeconds,
+      hasToll: routeFlag(sections, "tollway"),
+      hasHighway: routeFlag(sections, "controlledAccess"),
+      hasFerry: sections.some((section) => section.transport?.mode === "ferry"),
+    },
+  };
 }

@@ -37,7 +37,7 @@ export function decodeFlexiblePolyline(encoded: string): [number, number][] {
   return coordinates;
 }
 
-type HereSpan = { roadAttributes?: unknown };
+type HereSpan = { carAttributes?: unknown; streetAttributes?: unknown };
 type HereSection = {
   polyline?: unknown;
   summary?: { length?: unknown; duration?: unknown; baseDuration?: unknown };
@@ -77,14 +77,13 @@ export function normalizeHereResponse(payload: unknown, waypointCount: number, r
   return { provider: "here", route: { type: "LineString", coordinates }, summary: { distanceKm: lengthMeters / 1000, durationSeconds, baseDurationSeconds: hasBaseDuration ? baseDurationSeconds : null }, diagnostics: { sectionCount: sections.length, waypointCount, requestDurationMilliseconds } };
 }
 
-function routeFlag(sections: HereSection[], attribute: "tollway" | "controlledAccess") {
-  return sections.some((section) => section.spans?.some((span) =>
-    Array.isArray(span.roadAttributes) && span.roadAttributes.includes(attribute)
-  ));
+function spanFlag(sections: HereSection[], field: "carAttributes" | "streetAttributes", attributes: string[]) {
+  return sections.some((section) => section.spans?.some((span) => {
+    const values = span[field];
+    return Array.isArray(values) && attributes.some((attribute) => values.includes(attribute));
+  }));
 }
 
-// Waypost treats a highway as a controlled-access road. This conservative
-// HERE definition can be narrower than historical Valhalla has_highway values.
 export function normalizeHerePlanningResponse(payload: unknown): RouteResponse {
   const routes = (payload as HerePayload | null)?.routes;
   const sections = routes?.[0]?.sections;
@@ -110,8 +109,8 @@ export function normalizeHerePlanningResponse(payload: unknown): RouteResponse {
     summary: {
       distanceKm: lengthMeters / 1000,
       durationSeconds,
-      hasToll: routeFlag(sections, "tollway"),
-      hasHighway: routeFlag(sections, "controlledAccess"),
+      hasToll: spanFlag(sections, "carAttributes", ["tollRoad"]),
+      hasHighway: spanFlag(sections, "streetAttributes", ["motorway", "controlledAccessHighway"]),
       hasFerry: sections.some((section) => section.transport?.mode === "ferry"),
     },
   };

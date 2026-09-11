@@ -1,4 +1,4 @@
-import type { RoutePoint, RouteResponse } from "@/types/route";
+import type { RoutePoint, RouteResponse, TimedRouteResponse } from "@/types/route";
 
 export type RouteMatrixCell = {
   durationSeconds: number;
@@ -9,5 +9,6 @@ export type RouteMatrixCell = {
 
 export interface RoutingProvider {
   route(locations: RoutePoint[]): Promise<RouteResponse>;
+  timedRoute(locations: RoutePoint[]): Promise<TimedRouteResponse>;
   matrix(sources: RoutePoint[], targets: RoutePoint[]): Promise<RouteMatrixCell[][]>;
 }

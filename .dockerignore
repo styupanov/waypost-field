@@ -9,6 +9,7 @@ infra
 scripts
 *.log
 *.pem
+!certs/global-bundle.pem
 .env
 .env.*
 terraform.tfstate

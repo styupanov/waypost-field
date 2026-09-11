@@ -78,6 +78,17 @@ Local credential authentication also remains opt-in through the documented
 so provider keys and database/auth configuration are server-only and are not embedded in
 browser JavaScript.
 
+For AWS RDS, set `RDS_SSL_ROOT_CERT=/app/certs/global-bundle.pem` and supply `DATABASE_URL`
+as a secret. The production image contains the AWS RDS global CA bundle at that path. When
+the CA variable is set, the application validates the PEM before creating the pool and uses
+Node TLS with certificate and hostname verification. An optional URL `sslmode` must be
+`verify-full`; insecure modes are rejected. Local connections keep their existing behavior
+when `RDS_SSL_ROOT_CERT` is unset.
+
+The bundled public CA comes from
+`https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem` and is pinned by SHA-256
+`e5bb2084ccf45087bda1c9bffdea0eb15ee67f0b91646106e466714f9de3c7e3`.
+
 Set `AUTH_TRUST_HOST=true` only when the container is behind the deployment's trusted ingress
 (or for the local published-port smoke test). Keep the default false for untrusted direct-host
 deployments.

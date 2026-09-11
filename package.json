@@ -40,7 +40,8 @@
     "calibrate:h3-route": "node --experimental-strip-types --env-file=.env.local scripts/calibrate-h3-route.ts",
     "db:smoke-finalization": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/smoke-finalization.ts",
     "db:verify-overnights": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types --env-file=.env.local scripts/verify-overnight-persistence.ts",
-    "test:raw-provider-archive": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types scripts/verify-raw-provider-archive.ts"
+    "test:raw-provider-archive": "node --experimental-loader=./scripts/server-only-loader.mjs --experimental-strip-types scripts/verify-raw-provider-archive.ts",
+    "test:postgres-tls": "node --experimental-strip-types scripts/verify-postgres-tls.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",

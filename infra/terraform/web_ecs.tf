@@ -42,6 +42,7 @@ resource "aws_ecs_task_definition" "web" {
       { name = "NODE_ENV", value = "production" },
       { name = "HOSTNAME", value = "0.0.0.0" },
       { name = "PORT", value = "3000" },
+      { name = "ROUTING_PROVIDER", value = "here" },
       { name = "AUTH_TRUST_HOST", value = "true" },
       { name = "LOCAL_AUTH_ENABLED", value = "true" },
       { name = "RDS_SSL_ROOT_CERT", value = "/app/certs/global-bundle.pem" },

@@ -27,7 +27,7 @@ async function invariant(tripId: string) { return (await pool.query(`SELECT t.st
 
 try {
   attractionId = Number((await pool.query("SELECT id FROM attractions ORDER BY id LIMIT 1")).rows[0]?.id); assert.ok(attractionId);
-  assert.equal(BASE_H3_RESOLUTION, 10); assert.equal(MAX_SAMPLE_INTERVAL_METERS, 75); assert.equal(COVERAGE_SOURCE, "valhalla_inferred");
+  assert.equal(BASE_H3_RESOLUTION, 10); assert.equal(MAX_SAMPLE_INTERVAL_METERS, 75); assert.equal(COVERAGE_SOURCE, "route_geometry_inferred");
   assert.throws(() => generateBaseRouteCoverage({ type: "Point", coordinates: [-80, 35] }), /LineString/);
   const line = { type: "LineString" as const, coordinates: [[-80, 35], [-79, 36]] as [number, number][] };
   const generated = generateBaseRouteCoverage(line); const generatedAgain = generateBaseRouteCoverage(line);
@@ -35,7 +35,7 @@ try {
   const densified = densifyRoute(line.coordinates); for (let index = 1; index < densified.sampled.length; index += 1) assert.ok(routeSegmentMeters(densified.sampled[index - 1], densified.sampled[index]) <= MAX_SAMPLE_INTERVAL_METERS + .001);
 
   const owner = await user(); const tripA = await completed(owner); assert.equal((await rows(tripA.currentVersionId)).length, 0);
-  const traveledA = await confirmTripTravelOutcome(owner, tripA.id, "traveled"); const coverageA = await rows(tripA.currentVersionId); assert.equal(traveledA.status, "traveled"); assert.ok(coverageA.length > 0); assert.ok(coverageA.every(row => row.h3_resolution === 10 && row.coverage_source === "valhalla_inferred"));
+  const traveledA = await confirmTripTravelOutcome(owner, tripA.id, "traveled"); const coverageA = await rows(tripA.currentVersionId); assert.equal(traveledA.status, "traveled"); assert.ok(coverageA.length > 0); assert.ok(coverageA.every(row => row.h3_resolution === 10 && row.coverage_source === "route_geometry_inferred"));
   const firstFingerprint = fingerprint(coverageA.map(row => row.h3_index)); const firstConfirmedAt = traveledA.travelConfirmationAt;
   const retry = await confirmTripTravelOutcome(owner, tripA.id, "traveled"); assert.equal(retry.travelConfirmationAt, firstConfirmedAt); assert.deepEqual(await rows(tripA.currentVersionId), coverageA);
   const visitStop = (await pool.query<{ id: string }>("SELECT id FROM trip_stops WHERE trip_version_id=$1 AND stop_type='attraction'", [tripA.currentVersionId])).rows[0].id; await setOwnedTripPoiVisit(owner, tripA.id, visitStop, "visited");

@@ -18,7 +18,7 @@ try {
   assert.equal((await traveledRoutesResponse(null, new Request(usa))).status, 401);
   assert.equal((await visitedPlacesResponse(null, new Request(usa))).status, 401);
   const routeBody = await (await traveledRoutesResponse(trip.user_id, new Request(usa))).json();
-  assert.equal(routeBody.source, "valhalla_inferred"); assert.equal(routeBody.routeKind, "inferred_traveled"); assert.ok(routeBody.routeCount >= 1);
+  assert.equal(routeBody.source, "route_geometry_inferred"); assert.equal(routeBody.routeKind, "inferred_traveled"); assert.ok(routeBody.routeCount >= 1);
   assert.ok(routeBody.features.features.every((feature: GeoJSON.Feature) => feature.geometry.type === "LineString"));
   assert.ok(!JSON.stringify(routeBody).includes("trip_id") && !JSON.stringify(routeBody).includes("trip_version"));
   const outside = await (await traveledRoutesResponse(trip.user_id, new Request("http://local/x?west=10&south=40&east=20&north=50"))).json(); assert.equal(outside.routeCount, 0);

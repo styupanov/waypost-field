@@ -2,7 +2,7 @@ import { UNITS, greatCircleDistance, latLngToCell } from "h3-js";
 
 export const BASE_H3_RESOLUTION = 10;
 export const MAX_SAMPLE_INTERVAL_METERS = 75;
-export const COVERAGE_SOURCE = "valhalla_inferred" as const;
+export const COVERAGE_SOURCE = "route_geometry_inferred" as const;
 
 export type RouteCoordinate = [number, number];
 export type RouteLineString = { type: "LineString"; coordinates: RouteCoordinate[] };

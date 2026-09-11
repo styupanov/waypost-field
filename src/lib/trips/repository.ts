@@ -3,8 +3,8 @@ import type { PoolClient } from "pg";
 import { getPostgresPool } from "../db/postgres.ts";
 import {
   WAYPOST_PLANNER_VERSION,
-  WAYPOST_ROUTING_ENGINE,
 } from "../trip/planner-version.ts";
+import { activeRoutingProviderName } from "../routing/provider.ts";
 import { isOvernightStop, type TripDraft, type ItineraryStop } from "../../types/trip.ts";
 import type {
   AttractionSnapshot,
@@ -240,7 +240,7 @@ function versionValues(draft: TripDraft, routingEngineVersion: string | null) {
     draft.summary.durationSeconds, draft.summary.hasToll, draft.summary.hasHighway, draft.summary.hasFerry,
     draft.baselineSummary.distanceKm * 1000, draft.baselineSummary.durationSeconds,
     draft.baselineSummary.hasToll, draft.baselineSummary.hasHighway, draft.baselineSummary.hasFerry,
-    draft.composition.actualDetourSeconds, WAYPOST_ROUTING_ENGINE, routingEngineVersion, WAYPOST_PLANNER_VERSION,
+    draft.composition.actualDetourSeconds, activeRoutingProviderName(), routingEngineVersion, WAYPOST_PLANNER_VERSION,
     JSON.stringify(draft.dayPlans),
   ];
 }

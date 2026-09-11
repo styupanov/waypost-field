@@ -6,7 +6,7 @@ export type CoverageViewport = {
 };
 
 export type PersonalCoverageResponse = {
-  coverageKind: "valhalla_inferred";
+  coverageKind: "route_geometry_inferred";
   baseResolution: 10;
   displayResolution: number;
   baseCellCount: number;

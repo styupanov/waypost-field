@@ -2,7 +2,7 @@ import type { CoverageViewport } from "./coverage.ts";
 
 export type TraveledRouteHistoryResponse = {
   routeKind: "inferred_traveled";
-  source: "valhalla_inferred";
+  source: "route_geometry_inferred";
   routeCount: number;
   features: GeoJSON.FeatureCollection<GeoJSON.LineString>;
 };

@@ -17,7 +17,7 @@ export function resolveDisplayedTripRoute(
             properties: {
               ...draftRoute.properties,
               routeKind: "inferred_traveled",
-              source: "valhalla_inferred",
+              source: "route_geometry_inferred",
             },
           }
         : null;

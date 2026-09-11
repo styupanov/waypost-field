@@ -33,8 +33,8 @@ function encodeValhalla(points: [number, number][]) {
 }
 
 try {
-  assert.equal(DEFAULT_ROUTING_PROVIDER, "valhalla");
-  assert.equal(activeRoutingProviderName({}), "valhalla");
+  assert.equal(DEFAULT_ROUTING_PROVIDER, "here");
+  assert.equal(activeRoutingProviderName({}), "here");
   assert.equal(getRoutingProvider({ ROUTING_PROVIDER: "here" }), hereRoutingProvider);
   assert.equal(getRoutingProvider({ ROUTING_PROVIDER: "valhalla" }), valhallaRoutingProvider);
   assert.throws(() => getRoutingProvider({ ROUTING_PROVIDER: "other" }), /Unsupported ROUTING_PROVIDER/);
@@ -115,10 +115,10 @@ try {
   assert.match(migratedConsumers[6], /routingProvider\.route/);
   assert.match(migratedConsumers[7], /routingProvider\.route/);
 
-  const plannerVersion = readFileSync(new URL("../src/lib/trip/planner-version.ts", import.meta.url), "utf8");
+  const repository = readFileSync(new URL("../src/lib/trips/repository.ts", import.meta.url), "utf8");
   const coverage = readFileSync(new URL("../src/lib/coverage/h3-route.ts", import.meta.url), "utf8");
-  assert.match(plannerVersion, /WAYPOST_ROUTING_ENGINE = "valhalla"/, "Historical routing-engine attribution remains unchanged.");
-  assert.match(coverage, /COVERAGE_SOURCE = "valhalla_inferred"/, "Historical coverage attribution remains unchanged.");
+  assert.match(repository, /activeRoutingProviderName\(\)/, "New trip versions record the selected provider.");
+  assert.match(coverage, /COVERAGE_SOURCE = "route_geometry_inferred"/, "New coverage identifies its provider-neutral derivation.");
 } finally {
   if (originalProvider === undefined) delete process.env.ROUTING_PROVIDER; else process.env.ROUTING_PROVIDER = originalProvider;
   if (originalHereKey === undefined) delete process.env.HERE_API_KEY; else process.env.HERE_API_KEY = originalHereKey;

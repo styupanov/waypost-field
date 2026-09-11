@@ -33,7 +33,7 @@ for (const cache of [validCache, expiredCache, missingCache]) {
   const result = resolveDisplayedTripRoute(inferredRoute, finalized("traveled", cache), { status: "idle" });
   assert.deepEqual(result?.geometry, inferredRoute.geometry);
   assert.notDeepEqual(result?.geometry, hereRoute);
-  assert.equal(result?.properties.source, "valhalla_inferred");
+  assert.equal(result?.properties.source, "route_geometry_inferred");
   assert.equal(result?.properties.routeKind, "inferred_traveled");
 }
 

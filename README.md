@@ -16,12 +16,10 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-Migrated routing paths select their server-side provider with `ROUTING_PROVIDER`. The
-safe default is `valhalla`. For local HERE mode set `ROUTING_PROVIDER=here` and provide
-`HERE_API_KEY`. To retain the local fallback set `ROUTING_PROVIDER=valhalla` and
-`VALHALLA_URL=http://localhost:8002`. During the staged migration, overnight timing,
-multi-day composition, attraction bulk validation, and the Explore screening matrix
-continue to use Valhalla directly.
+Server-side routing uses HERE when `ROUTING_PROVIDER` is unset or set to `here`; provide
+`HERE_API_KEY` in either case. The optional local comparison fallback remains available
+with `ROUTING_PROVIDER=valhalla` and `VALHALLA_URL=http://localhost:8002`. All product and
+domain consumers use the provider-neutral routing facade.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
@@ -68,6 +66,7 @@ For local Windows testing against Valhalla published on host port 8002, use
 ```powershell
 docker run --rm --name waypost-web -p 3000:3000 `
   -e PORT=3000 `
+  -e ROUTING_PROVIDER=valhalla `
   -e VALHALLA_URL=http://host.docker.internal:8002 `
   -e DATABASE_URL=<local-container-reachable-postgres-url> `
   -e AUTH_SECRET=<development-auth-secret> `

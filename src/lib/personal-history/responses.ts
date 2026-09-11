@@ -6,7 +6,7 @@ export async function traveledRoutesResponse(userId: string | null, request: Req
   if (!userId) return Response.json({ error: { code: "AUTH_REQUIRED" } }, { status: 401 });
   try {
     const routes = await loadTraveledRoutes(userId, parseHistoryViewport(request.url));
-    return Response.json({ routeKind: "inferred_traveled", source: "valhalla_inferred", routeCount: routes.length, features: { type: "FeatureCollection", features: routes.map((geometry) => ({ type: "Feature", properties: {}, geometry })) } });
+    return Response.json({ routeKind: "inferred_traveled", source: "route_geometry_inferred", routeCount: routes.length, features: { type: "FeatureCollection", features: routes.map((geometry) => ({ type: "Feature", properties: {}, geometry })) } });
   } catch { return Response.json({ error: { code: "HISTORY_UNAVAILABLE" } }, { status: 400 }); }
 }
 

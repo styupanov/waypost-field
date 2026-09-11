@@ -7,7 +7,7 @@ import { valhallaRoutingProvider } from "./valhalla-routing-provider.ts";
 export { RoutingProviderError } from "./routing-provider.ts";
 
 export type RoutingProviderName = "here" | "valhalla";
-export const DEFAULT_ROUTING_PROVIDER: RoutingProviderName = "valhalla";
+export const DEFAULT_ROUTING_PROVIDER: RoutingProviderName = "here";
 
 type RoutingEnvironment = Record<string, string | undefined>;
 

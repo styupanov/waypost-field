@@ -10,7 +10,7 @@ export async function loadPersonalBaseCoverageCells(userId: string) {
      JOIN public.trip_versions v ON v.id=rc.trip_version_id
      JOIN public.trips t ON t.current_version_id=v.id AND t.user_id=rc.user_id
      WHERE rc.user_id=$1 AND t.status='traveled' AND v.state='finalized'
-       AND rc.h3_resolution=10 AND rc.coverage_source='valhalla_inferred'
+       AND rc.h3_resolution=10 AND rc.coverage_source IN ('valhalla_inferred','route_geometry_inferred')
      ORDER BY rc.h3_index`,
     [userId]
   );

@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
-import { AttractionQueryError, DatabaseConnectionError } from "@/lib/attractions/candidates";
-import { DatabaseConfigurationError } from "@/lib/db/postgres";
-import { RoutingProviderError } from "@/lib/routing/provider";
 import { composeTripDraft } from "@/lib/trip/composition";
+import { classifyDraftCompositionFailure } from "@/lib/trip/draft-api-errors";
 import { parseTripPreferences } from "@/lib/trip/preferences-validation";
 import type { DraftEndpoint, DraftOvernightStop, DraftUserAttractionStop } from "@/types/trip";
 import { authenticatedWaypostUserId } from "@/lib/auth/session";
 import { assertTripOwnership, saveOwnedCurrentDraftVersion } from "@/lib/trips/repository";
-import { TripPersistenceError } from "@/lib/trips/repository";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -70,26 +67,11 @@ export async function POST(request: Request) {
     if (ownedTripId && userId) await saveOwnedCurrentDraftVersion(userId, ownedTripId, draft);
     return NextResponse.json(draft);
   } catch (reason) {
-    if (reason instanceof TripPersistenceError && reason.code === "TRIP_NOT_FOUND") {
-      return errorResponse("TRIP_NOT_FOUND", "Trip was not found.", 404);
+    const failure = classifyDraftCompositionFailure(reason);
+    if (failure.logMessage) {
+      if (failure.diagnostic) console.error(failure.logMessage, failure.diagnostic);
+      else console.error(failure.logMessage);
     }
-    if (reason instanceof DatabaseConfigurationError) {
-      console.error("Draft attraction database is not configured.");
-      return errorResponse("DATABASE_NOT_CONFIGURED", "Draft composition is not configured.", 500);
-    }
-    if (reason instanceof DatabaseConnectionError) {
-      console.error("Draft attraction database connection failed.");
-      return errorResponse("DATABASE_UNAVAILABLE", "Draft composition is temporarily unavailable.", 503);
-    }
-    if (reason instanceof AttractionQueryError) {
-      console.error("Draft attraction query failed.");
-      return errorResponse("ATTRACTION_QUERY_FAILED", "The personalized draft could not be generated.", 500);
-    }
-    if (reason instanceof RoutingProviderError) {
-      console.error("Draft routing failed.");
-      return errorResponse("ROUTING_UNAVAILABLE", "The personalized draft route could not be generated.", reason.statusCode);
-    }
-    console.error("Unexpected draft composition error.");
-    return errorResponse("DRAFT_COMPOSITION_FAILED", "The personalized draft could not be generated.", 500);
+    return errorResponse(failure.code, failure.message, failure.status);
   }
 }

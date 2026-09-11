@@ -107,7 +107,7 @@ try {
   assert.match(explore, /calculateExactRoute: routingProvider\.route/);
   for (const consumer of migratedConsumers) {
     assert.doesNotMatch(consumer, /routing\/valhalla/);
-    assert.match(consumer, /routingProvider|RoutingProviderError/);
+    assert.match(consumer, /routingProvider|RoutingProviderError|classifyDraftCompositionFailure/);
   }
   assert.match(migratedConsumers[3], /routingProvider\.timedRoute/);
   assert.match(migratedConsumers[4], /routingProvider\.route/);

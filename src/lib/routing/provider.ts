@@ -48,3 +48,21 @@ export const routingProvider: RoutingProvider = {
   timedRoute: (locations: RoutePoint[]): Promise<TimedRouteResponse> => invoke(() => getRoutingProvider().timedRoute(locations)),
   matrix: (sources: RoutePoint[], targets: RoutePoint[]): Promise<RouteMatrixCell[][]> => invoke(() => getRoutingProvider().matrix(sources, targets)),
 };
+
+export type RouteMatrixTimings = { outboundMatrixMs: number; inboundMatrixMs: number; matrixWallClockMs: number };
+
+export async function calculateReturnTripMatrix(origin: RoutePoint, destinations: RoutePoint[], timings?: RouteMatrixTimings) {
+  if (!destinations.length) return [];
+  const wallStarted = performance.now();
+  const measured = async (direction: "outboundMatrixMs" | "inboundMatrixMs", sources: RoutePoint[], targets: RoutePoint[]) => {
+    const started = performance.now();
+    try { return await routingProvider.matrix(sources, targets); }
+    finally { if (timings) timings[direction] = performance.now() - started; }
+  };
+  const [outbound, inbound] = await Promise.all([
+    measured("outboundMatrixMs", [origin], destinations),
+    measured("inboundMatrixMs", destinations, [origin]),
+  ]);
+  if (timings) timings.matrixWallClockMs = performance.now() - wallStarted;
+  return destinations.map((_, index) => ({ outbound: outbound[0]?.[index] ?? null, inbound: inbound[index]?.[0] ?? null }));
+}

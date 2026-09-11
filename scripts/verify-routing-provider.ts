@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { activeRoutingProviderName, DEFAULT_ROUTING_PROVIDER, getRoutingProvider, routingProvider, RoutingProviderError } from "../src/lib/routing/provider.ts";
+import { activeRoutingProviderName, calculateReturnTripMatrix, DEFAULT_ROUTING_PROVIDER, getRoutingProvider, routingProvider, RoutingProviderError } from "../src/lib/routing/provider.ts";
 import { hereRoutingProvider } from "../src/lib/routing/here-routing-provider.ts";
 import { valhallaRoutingProvider } from "../src/lib/routing/valhalla-routing-provider.ts";
 import { editTripDraft } from "../src/lib/trip/draft-editing.ts";
@@ -43,6 +43,7 @@ try {
   process.env.VALHALLA_URL = "http://valhalla.test";
   globalThis.fetch = async (input) => {
     const url = String(input);
+    if (url.startsWith("https://matrix.router.hereapi.com/")) return Response.json({ matrix: { numOrigins: 1, numDestinations: 1, travelTimes: [12], distances: [3_400], errorCodes: [0] } });
     if (url.startsWith("https://router.hereapi.com/")) return Response.json(herePayload);
     if (url === "http://valhalla.test/route") return Response.json({ trip: { legs: [{ shape: encodeValhalla([[-80, 35], [-79, 36]]) }], summary: { length: 10, time: 20, has_toll: false, has_highway: true, has_ferry: false } } });
     if (url === "http://valhalla.test/sources_to_targets") return Response.json({ sources_to_targets: [[{ time: 30, distance: 40 }]] });
@@ -60,12 +61,18 @@ try {
   } as unknown as TripDraft;
   const edited = await editTripDraft(draft, { type: "add", attractionId: 1 });
   assert.equal(edited.stops.length, 1); assert.equal(edited.summary.distanceKm, 1);
+  const hereMatrix = await routingProvider.matrix([{ lat: 50.1, lon: 8.7 }], [{ lat: 50.09, lon: 8.68 }]);
+  assert.deepEqual(hereMatrix, [[{ durationSeconds: 12, distanceKm: 3.4, sourceIndex: 0, targetIndex: 0 }]]);
+  const hereReturn = await calculateReturnTripMatrix({ lat: 50.1, lon: 8.7 }, [{ lat: 50.09, lon: 8.68 }]);
+  assert.deepEqual(hereReturn, [{ outbound: hereMatrix[0][0], inbound: hereMatrix[0][0] }]);
 
   process.env.ROUTING_PROVIDER = "valhalla";
   const valhalla = await routingProvider.route([{ lat: 35, lon: -80 }, { lat: 36, lon: -79 }]);
   assert.equal(valhalla.summary.distanceKm, 10); assert.equal(valhalla.summary.durationSeconds, 20);
   const matrix = await routingProvider.matrix([{ lat: 35, lon: -80 }], [{ lat: 36, lon: -79 }]);
   assert.deepEqual(matrix, [[{ durationSeconds: 30, distanceKm: 40, sourceIndex: 0, targetIndex: 0 }]]);
+  const valhallaReturn = await calculateReturnTripMatrix({ lat: 35, lon: -80 }, [{ lat: 36, lon: -79 }]);
+  assert.deepEqual(valhallaReturn, [{ outbound: matrix[0][0], inbound: matrix[0][0] }]);
 
   process.env.ROUTING_PROVIDER = "here";
   globalThis.fetch = async () => new Response("unavailable", { status: 503 });

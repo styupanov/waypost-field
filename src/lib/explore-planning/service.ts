@@ -1,6 +1,5 @@
 import "server-only";
-import { routingProvider, activeRoutingProviderName, type RoutingProviderName } from "@/lib/routing/provider";
-import { calculateReturnTripMatrix, type RouteMatrixTimings } from "@/lib/routing/valhalla";
+import { routingProvider, activeRoutingProviderName, calculateReturnTripMatrix, type RouteMatrixTimings, type RoutingProviderName } from "@/lib/routing/provider";
 import { mapRawAttractionCategory } from "@/lib/attractions/category-mapping";
 import { parseVisitDuration } from "@/lib/attractions/duration";
 import { exploreCategoryLabel, findExploreAttractionCandidates, type ExploreAttractionCandidate } from "@/lib/explore-planning/repository";

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { AttractionQueryError, DatabaseConnectionError } from "@/lib/attractions/candidates";
 import { findAttractionOpportunities, type OpportunityQuery } from "@/lib/attractions/opportunities";
 import { DatabaseConfigurationError } from "@/lib/db/postgres";
-import { RoutingServiceError } from "@/lib/routing/valhalla";
+import { RoutingProviderError } from "@/lib/routing/provider";
 import type { RoutePoint } from "@/types/route";
 import { parseTripPreferences } from "@/lib/trip/preferences-validation";
 
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
       console.error("Attraction query failed.");
       return errorResponse("ATTRACTION_QUERY_FAILED", "Attraction opportunities could not be generated.", 500);
     }
-    if (reason instanceof RoutingServiceError) {
+    if (reason instanceof RoutingProviderError) {
       console.error("Attraction detour routing failed.");
       return errorResponse("ROUTING_UNAVAILABLE", "Attraction detours could not be calculated.", reason.statusCode);
     }

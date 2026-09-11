@@ -8,14 +8,16 @@ import {
   shortlistCandidates,
   type ScoredCandidate,
 } from "@/lib/attractions/scoring";
-import { calculateRoute } from "@/lib/routing/valhalla";
+import { routingProvider } from "@/lib/routing/provider";
 import { personalizeOpportunities } from "@/lib/attractions/personalization";
 import type { AttractionOpportunitiesResponse, AttractionOpportunity } from "@/types/attractions";
 import type { RoutePoint, RouteResponse, RouteSummary } from "@/types/route";
 import type { TripPreferences } from "@/types/preferences";
 
-export const VALHALLA_CONCURRENCY = 5;
+export const ROUTING_VALIDATION_CONCURRENCY = 5;
 export const ATTRACTION_SCORING_POOL_LIMIT = 5_000;
+// Eight retains the existing day-planning breadth while bounding paid exact routes.
+export const ATTRACTION_EXACT_VALIDATION_LIMIT = 8;
 
 export type OpportunityQuery = {
   locations: RoutePoint[];
@@ -24,9 +26,23 @@ export type OpportunityQuery = {
   preferences: TripPreferences;
 };
 
-type OpportunityOptions = {
+export type OpportunityOptions = {
   baselineRoute?: RouteResponse;
   validationLimit?: number;
+};
+
+export type OpportunityDependencies = {
+  findCandidates: typeof findAttractionCandidates;
+  findMeanRating: typeof findDatasetMeanRating;
+  calculateRoute: typeof routingProvider.route;
+  calculateMatrix: typeof routingProvider.matrix;
+};
+
+const defaultDependencies: OpportunityDependencies = {
+  findCandidates: findAttractionCandidates,
+  findMeanRating: findDatasetMeanRating,
+  calculateRoute: routingProvider.route,
+  calculateMatrix: routingProvider.matrix,
 };
 
 function squaredDistance(left: RoutePoint, right: RoutePoint) {
@@ -93,17 +109,18 @@ function buildOpportunity(candidate: ScoredCandidate, baseline: RouteSummary, ca
   };
 }
 
-export async function findAttractionOpportunities(
+export async function findAttractionOpportunitiesWithDependencies(
   { locations, route, corridorMeters, preferences }: OpportunityQuery,
-  options: OpportunityOptions = {}
+  options: OpportunityOptions,
+  dependencies: OpportunityDependencies
 ): Promise<AttractionOpportunitiesResponse> {
   const [candidateResult, datasetMeanRating] = await Promise.all([
-    findAttractionCandidates({
+    dependencies.findCandidates({
       route,
       corridorMeters,
       limit: ATTRACTION_SCORING_POOL_LIMIT,
     }),
-    findDatasetMeanRating(),
+    dependencies.findMeanRating(),
   ]);
   const deduplicated = deduplicateAttractionCandidates(
     candidateResult.candidates
@@ -125,15 +142,47 @@ export async function findAttractionOpportunities(
         duplicatesRemoved: deduplicated.duplicatesRemoved,
         shortlistSize: 0,
         candidatePoolTruncated: candidateResult.truncated,
+        matrixRequestCount: 0,
+        matrixSucceeded: false,
+        matrixReachableCandidateCount: 0,
+        exactValidationLimit: ATTRACTION_EXACT_VALIDATION_LIMIT,
       },
     };
   }
 
-  const baseline = options.baselineRoute ?? (await calculateRoute(locations));
-  const validationPool = shortlist.slice(0, options.validationLimit ?? shortlist.length);
-  const evaluated = await mapWithConcurrency(validationPool, VALHALLA_CONCURRENCY, async (candidate) => {
+  const baseline = options.baselineRoute ?? (await dependencies.calculateRoute(locations));
+  const candidatePoints = shortlist.map((candidate) => ({ lat: candidate.lat, lon: candidate.lon }));
+  let matrixRequestCount = 2;
+  let matrixSucceeded = false;
+  let matrixReachableCandidateCount = shortlist.length;
+  let ranked = shortlist;
+  try {
+    const [outbound, inbound] = await Promise.all([
+      dependencies.calculateMatrix([locations[0]], candidatePoints),
+      dependencies.calculateMatrix(candidatePoints, [locations.at(-1)!]),
+    ]);
+    ranked = shortlist.flatMap((candidate, index) => {
+      const toCandidate = outbound[0]?.[index];
+      const fromCandidate = inbound[index]?.[0];
+      if (!toCandidate || !fromCandidate) return [];
+      const distance = Math.max(0, toCandidate.distanceKm + fromCandidate.distanceKm - baseline.summary.distanceKm);
+      const duration = Math.max(0, toCandidate.durationSeconds + fromCandidate.durationSeconds - baseline.summary.durationSeconds);
+      return [{ candidate, estimate: calculateOpportunityScore(candidate.qualityScore, distance, duration) }];
+    }).sort((left, right) => right.estimate - left.estimate || right.candidate.qualityScore - left.candidate.qualityScore || left.candidate.id - right.candidate.id)
+      .map(({ candidate }) => candidate);
+    matrixSucceeded = true;
+    matrixReachableCandidateCount = ranked.length;
+  } catch {
+    // Preserve the quality shortlist as a bounded fallback when matrix routing fails.
+    matrixRequestCount = 2;
+    matrixReachableCandidateCount = 0;
+  }
+  const requestedLimit = options.validationLimit ?? ATTRACTION_EXACT_VALIDATION_LIMIT;
+  const exactValidationLimit = Math.max(0, Math.min(ATTRACTION_EXACT_VALIDATION_LIMIT, requestedLimit));
+  const validationPool = ranked.slice(0, exactValidationLimit);
+  const evaluated = await mapWithConcurrency(validationPool, ROUTING_VALIDATION_CONCURRENCY, async (candidate) => {
     const candidateLocations = insertAttractionPreservingStops(locations, { lat: candidate.lat, lon: candidate.lon });
-    const candidateRoute = await calculateRoute(candidateLocations);
+    const candidateRoute = await dependencies.calculateRoute(candidateLocations);
     return buildOpportunity(candidate, baseline.summary, candidateRoute.summary);
   });
 
@@ -153,6 +202,14 @@ export async function findAttractionOpportunities(
       duplicatesRemoved: deduplicated.duplicatesRemoved,
       shortlistSize: shortlist.length,
       candidatePoolTruncated: candidateResult.truncated,
+      matrixRequestCount,
+      matrixSucceeded,
+      matrixReachableCandidateCount,
+      exactValidationLimit,
     },
   };
+}
+
+export function findAttractionOpportunities(query: OpportunityQuery, options: OpportunityOptions = {}) {
+  return findAttractionOpportunitiesWithDependencies(query, options, defaultDependencies);
 }

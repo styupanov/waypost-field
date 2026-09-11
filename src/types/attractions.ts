@@ -40,6 +40,10 @@ export type OpportunityDiagnostics = {
   duplicatesRemoved: number;
   shortlistSize: number;
   candidatePoolTruncated: boolean;
+  matrixRequestCount: number;
+  matrixSucceeded: boolean;
+  matrixReachableCandidateCount: number;
+  exactValidationLimit: number;
 };
 
 export type PreferenceBreakdown = {

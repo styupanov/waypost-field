@@ -55,14 +55,14 @@ const easyRequest = parseExplorePlanningRequest({ ...valid, drivingPace: "easy" 
 let exactCalls = 0;
 const allOverBudget = await generateExploreIdeasWithDependencies(easyRequest, {
   findCandidates: async () => ({ candidates, totalCount: candidates.length }),
-  calculateMatrix: async () => candidates.map(() => ({ outbound: { durationSeconds: 7 * 3600, distanceKm: 500 }, inbound: { durationSeconds: 7 * 3600, distanceKm: 500 } })),
+  calculateMatrix: async () => candidates.map((_, index) => ({ outbound: { durationSeconds: 7 * 3600, distanceKm: 500, sourceIndex: 0, targetIndex: index }, inbound: { durationSeconds: 7 * 3600, distanceKm: 500, sourceIndex: index, targetIndex: 0 } })),
   calculateExactRoute: async () => { exactCalls += 1; throw new Error("Exact route must not run after authoritative matrix rejection."); },
   exactRouteProvider: () => "here",
 });
 assert.equal(allOverBudget.outcome, "outside_driving_budget"); assert.equal(exactCalls, 0);
 const feasible = await generateExploreIdeasWithDependencies(easyRequest, {
   findCandidates: async () => ({ candidates, totalCount: candidates.length }),
-  calculateMatrix: async () => candidates.map(() => ({ outbound: { durationSeconds: 4 * 3600, distanceKm: 300 }, inbound: { durationSeconds: 4 * 3600, distanceKm: 300 } })),
+  calculateMatrix: async () => candidates.map((_, index) => ({ outbound: { durationSeconds: 4 * 3600, distanceKm: 300, sourceIndex: 0, targetIndex: index }, inbound: { durationSeconds: 4 * 3600, distanceKm: 300, sourceIndex: index, targetIndex: 0 } })),
   calculateExactRoute: async () => { exactCalls += 1; return { route: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: [[0,0],[1,1]] } }, summary: { durationSeconds: 9 * 3600, distanceKm: 999, hasToll: false, hasHighway: true, hasFerry: false } }; },
   exactRouteProvider: () => "here",
 });
@@ -82,7 +82,7 @@ assert.match(repository, /ST_Covers\(area\.geom, a\.geom::geometry\)/, "Exact po
 assert.match(repository, /review_count[\s\S]*mean_rating/, "Bayesian rating/review quality is used.");
 assert.match(repository, /source_mean AS MATERIALIZED/, "The global source mean must be evaluated once rather than once per eligible row.");
 assert.match(repository, /\$2::boolean OR a\.category = ANY/, "Empty interests are generic; selected interests filter source categories.");
-assert.match(service, /calculateReturnTripMatrix/); assert.match(service, /routingProvider\.route/); assert.match(service, /exactRouteProvider/); assert.doesNotMatch(service, /calculateHere|haversine|centroid/i);
+assert.match(service, /calculateReturnTripMatrix/); assert.match(service, /routingProvider\.route/); assert.match(service, /exactRouteProvider/); assert.doesNotMatch(service, /routing\/valhalla|calculateHere|haversine|centroid/i);
 assert.match(service, /exploreRouteFitsBudget\(response\.summary\.durationSeconds, budget\)/); assert.match(service, /response\.summary\.distanceKm/);
 assert.match(service, /calculateExactRoute\(\[origin, \{ lat: candidate\.latitude, lon: candidate\.longitude \}, origin\]\)/, "The selected exact-route provider receives origin, real attraction, origin.");
 assert.match(api, /authenticatedWaypostUserId/); assert.match(api, /status: 401/); assert.match(api, /status: 400/);

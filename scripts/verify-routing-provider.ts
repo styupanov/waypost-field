@@ -14,7 +14,7 @@ const originalFetch = globalThis.fetch;
 const herePayload = { routes: [{ sections: [{
   polyline: "BFoz5xJ67i1B1B7PzIhaxL7Y",
   summary: { length: 1_000, duration: 100 },
-  spans: [{ offset: 0, carAttributes: ["open"], streetAttributes: ["motorway"] }],
+  spans: [{ offset: 0, duration: 100, carAttributes: ["open"], streetAttributes: ["motorway"] }],
   transport: { mode: "car" },
 }] }] };
 
@@ -45,7 +45,7 @@ try {
     const url = String(input);
     if (url.startsWith("https://matrix.router.hereapi.com/")) return Response.json({ matrix: { numOrigins: 1, numDestinations: 1, travelTimes: [12], distances: [3_400], errorCodes: [0] } });
     if (url.startsWith("https://router.hereapi.com/")) return Response.json(herePayload);
-    if (url === "http://valhalla.test/route") return Response.json({ trip: { legs: [{ shape: encodeValhalla([[-80, 35], [-79, 36]]) }], summary: { length: 10, time: 20, has_toll: false, has_highway: true, has_ferry: false } } });
+    if (url === "http://valhalla.test/route") return Response.json({ trip: { legs: [{ shape: encodeValhalla([[-80, 35], [-79, 36]]), maneuvers: [{ time: 20, begin_shape_index: 0, end_shape_index: 1 }] }], summary: { length: 10, time: 20, has_toll: false, has_highway: true, has_ferry: false } } });
     if (url === "http://valhalla.test/sources_to_targets") return Response.json({ sources_to_targets: [[{ time: 30, distance: 40 }]] });
     throw new Error("Unexpected fixture URL");
   };
@@ -53,6 +53,8 @@ try {
   process.env.ROUTING_PROVIDER = "here";
   const here = await routingProvider.route([{ lat: 50.1, lon: 8.7 }, { lat: 50.09, lon: 8.68 }]);
   assert.equal(here.summary.distanceKm, 1); assert.equal(here.summary.hasHighway, true);
+  const hereTimed = await routingProvider.timedRoute([{ lat: 50.1, lon: 8.7 }, { lat: 50.09, lon: 8.68 }]);
+  assert.deepEqual(hereTimed.waypointArrivalSeconds, [0, 100]);
   const draft = {
     origin: { label: "A", coordinates: { lat: 50.1, lon: 8.7 } }, destination: { label: "B", coordinates: { lat: 50.09, lon: 8.68 } },
     route: here.route, summary: here.summary, baselineSummary: here.summary, stops: [],
@@ -69,6 +71,8 @@ try {
   process.env.ROUTING_PROVIDER = "valhalla";
   const valhalla = await routingProvider.route([{ lat: 35, lon: -80 }, { lat: 36, lon: -79 }]);
   assert.equal(valhalla.summary.distanceKm, 10); assert.equal(valhalla.summary.durationSeconds, 20);
+  const valhallaTimed = await routingProvider.timedRoute([{ lat: 35, lon: -80 }, { lat: 36, lon: -79 }]);
+  assert.deepEqual(valhallaTimed.waypointArrivalSeconds, [0, 20]);
   const matrix = await routingProvider.matrix([{ lat: 35, lon: -80 }], [{ lat: 36, lon: -79 }]);
   assert.deepEqual(matrix, [[{ durationSeconds: 30, distanceKm: 40, sourceIndex: 0, targetIndex: 0 }]]);
   const valhallaReturn = await calculateReturnTripMatrix({ lat: 35, lon: -80 }, [{ lat: 36, lon: -79 }]);
@@ -88,13 +92,33 @@ try {
   await assert.rejects(() => routingProvider.route([{ lat: 35, lon: -80 }, { lat: 36, lon: -79 }]), (error: unknown) => error instanceof RoutingProviderError && error.statusCode === 503 && !error.message.includes("fixture-key"));
 
   const explore = readFileSync(new URL("../src/lib/explore-planning/service.ts", import.meta.url), "utf8");
-  const overnight = readFileSync(new URL("../src/lib/overnights/candidates.ts", import.meta.url), "utf8");
-  const dayComposition = readFileSync(new URL("../src/lib/trip/day-composition.ts", import.meta.url), "utf8");
+  const migratedConsumers = [
+    "../src/app/api/draft/overnight/route.ts",
+    "../src/app/api/draft/route.ts",
+    "../src/app/api/overnights/candidates/route.ts",
+    "../src/lib/overnights/candidates.ts",
+    "../src/lib/overnights/editing.ts",
+    "../src/lib/overnights/integration.ts",
+    "../src/lib/trip/composition.ts",
+    "../src/lib/trip/day-composition.ts",
+  ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8"));
   assert.match(draftEditing, /routingProvider\.route/);
   assert.match(explore, /calculateMatrix: calculateReturnTripMatrix/);
   assert.match(explore, /calculateExactRoute: routingProvider\.route/);
-  assert.match(overnight, /routing\/valhalla/);
-  assert.match(dayComposition, /routing\/valhalla/);
+  for (const consumer of migratedConsumers) {
+    assert.doesNotMatch(consumer, /routing\/valhalla/);
+    assert.match(consumer, /routingProvider|RoutingProviderError/);
+  }
+  assert.match(migratedConsumers[3], /routingProvider\.timedRoute/);
+  assert.match(migratedConsumers[4], /routingProvider\.route/);
+  assert.match(migratedConsumers[5], /routingProvider\.route/);
+  assert.match(migratedConsumers[6], /routingProvider\.route/);
+  assert.match(migratedConsumers[7], /routingProvider\.route/);
+
+  const plannerVersion = readFileSync(new URL("../src/lib/trip/planner-version.ts", import.meta.url), "utf8");
+  const coverage = readFileSync(new URL("../src/lib/coverage/h3-route.ts", import.meta.url), "utf8");
+  assert.match(plannerVersion, /WAYPOST_ROUTING_ENGINE = "valhalla"/, "Historical routing-engine attribution remains unchanged.");
+  assert.match(coverage, /COVERAGE_SOURCE = "valhalla_inferred"/, "Historical coverage attribution remains unchanged.");
 } finally {
   if (originalProvider === undefined) delete process.env.ROUTING_PROVIDER; else process.env.ROUTING_PROVIDER = originalProvider;
   if (originalHereKey === undefined) delete process.env.HERE_API_KEY; else process.env.HERE_API_KEY = originalHereKey;

@@ -43,6 +43,14 @@ const distinct = normalizeHereTimedPlanningResponse(distinctBoundaryPayload, 3);
 assert.equal(distinct.route.geometry.coordinates.length, 4);
 assert.deepEqual(distinct.timingSegments.map(({ beginShapeIndex, endShapeIndex }) => [beginShapeIndex, endShapeIndex]), [[0, 1], [2, 3]]);
 
+const repeatedPointPayload = { routes: [{ sections: [
+  section([[-80, 35], [-79.5, 35.5], [-79.5, 35.5], [-79, 36]], 50, [{ offset: 0, duration: 30 }, { offset: 2, duration: 20 }]),
+] }] };
+const repeatedPoint = normalizeHereTimedPlanningResponse(repeatedPointPayload, 2);
+assert.equal(repeatedPoint.route.geometry.coordinates.length, 3, "Adjacent duplicate points are removed from canonical geometry.");
+assert.deepEqual(repeatedPoint.timingSegments.map(({ beginShapeIndex, endShapeIndex }) => [beginShapeIndex, endShapeIndex]), [[0, 1], [1, 2]], "HERE span offsets remain aligned after internal point deduplication.");
+assert.deepEqual(repeatedPoint.waypointArrivalSeconds, [0, 50]);
+
 const ferryPayload = { routes: [{ sections: [
   section([[-1, 50], [-0.9, 50.1]], 100, [{ offset: 0, duration: 100 }]),
   section([[-0.9, 50.1], [0, 50.5]], 205, [{ offset: 0, duration: 150 }], undefined, { transport: { mode: "ferry" }, preActions: [{ action: "board", duration: 20 }], postActions: [{ action: "deboard", duration: 30 }] }),

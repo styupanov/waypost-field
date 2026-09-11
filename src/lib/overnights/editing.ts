@@ -1,5 +1,5 @@
 import "server-only";
-import { calculateRoute } from "@/lib/routing/valhalla";
+import { routingProvider } from "@/lib/routing/provider";
 import { overnightStopFromCandidate } from "@/lib/overnights/integration";
 import { isOvernightStop, type TripDraft } from "@/types/trip";
 
@@ -13,7 +13,7 @@ export async function changeOvernight(draft: TripDraft, nightIndex: number, geon
   if (existingIndex < 0) throw new OvernightEditError("The overnight stop was not found.");
   const stops = [...draft.stops];
   stops[existingIndex] = overnightStopFromCandidate(candidate, nightIndex, night.targetDrivingSeconds, "user");
-  const routed = await calculateRoute([draft.origin.coordinates, ...stops.map((stop) => stop.coordinates), draft.destination.coordinates]);
+  const routed = await routingProvider.route([draft.origin.coordinates, ...stops.map((stop) => stop.coordinates), draft.destination.coordinates]);
   const rawDetour = routed.summary.durationSeconds - draft.baselineSummary.durationSeconds;
   return { ...draft, stops, route: routed.route, summary: routed.summary, composition: { ...draft.composition, actualDetourSeconds: Math.max(0, rawDetour), actualDetourWasClamped: rawDetour < 0, valhallaCallCount: (draft.composition.valhallaCallCount ?? 0) + 1 } };
 }

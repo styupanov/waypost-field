@@ -1,7 +1,7 @@
 import "server-only";
 import { normalizeAttractionName } from "@/lib/attractions/deduplication";
 import { findAttractionOpportunities } from "@/lib/attractions/opportunities";
-import { calculateRoute } from "@/lib/routing/valhalla";
+import { routingProvider } from "@/lib/routing/provider";
 import type { PersonalizedAttractionOpportunity } from "@/types/attractions";
 import type {
   DraftEndpoint,
@@ -287,7 +287,7 @@ export async function composeTripDraft(
     ...(primaryAnchor ? [primaryAnchor.coordinates] : []),
     request.destination.coordinates,
   ];
-  const baseline = await calculateRoute(skeletonLocations);
+  const baseline = await routingProvider.route(skeletonLocations);
   const baselineRouteCalls = 1;
   const hardDraftStops: DraftStop[] = [
     ...(request.stop ? [{ ...request.stop, source: "user" as const }] : []),
@@ -305,7 +305,7 @@ export async function composeTripDraft(
     let structuralRouteCalls = 0;
     if ((request.hardUserAttractions ?? []).length > 0) {
       const sequence = waypointSequence(request, [], baseline.route);
-      structuralRoute = await calculateRoute(sequence.locations);
+      structuralRoute = await routingProvider.route(sequence.locations);
       structuralStops = sequence.stops;
       structuralRouteCalls = 1;
     }
@@ -374,7 +374,7 @@ export async function composeTripDraft(
 
   if ((request.hardUserAttractions ?? []).length > 0) {
     const hardSequence = waypointSequence(request, [], baseline.route);
-    finalRoute = await calculateRoute(hardSequence.locations);
+    finalRoute = await routingProvider.route(hardSequence.locations);
     finalStops = hardSequence.stops;
     compositionRouteCalls += 1;
     actualDetourSeconds = Math.max(0, finalRoute.summary.durationSeconds - baseline.summary.durationSeconds);
@@ -382,7 +382,7 @@ export async function composeTripDraft(
 
   while (selected.length > 0) {
     const sequence = waypointSequence(request, selected, baseline.route);
-    const composed = await calculateRoute(sequence.locations);
+    const composed = await routingProvider.route(sequence.locations);
     compositionRouteCalls += 1;
     const rawDetour =
       composed.summary.durationSeconds - baseline.summary.durationSeconds;

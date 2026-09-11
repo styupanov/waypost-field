@@ -1,11 +1,21 @@
 import "server-only";
-import type { RoutingProvider } from "./routing-provider.ts";
-import { calculateMatrix, calculateRoute, calculateTimedRoute } from "./valhalla.ts";
+import { RoutingProviderError, type RoutingProvider } from "./routing-provider.ts";
+import { calculateMatrix, calculateRoute, calculateTimedRoute, RoutingServiceError } from "./valhalla.ts";
+
+async function normalizeValhallaError<T>(operation: () => Promise<T>) {
+  try { return await operation(); }
+  catch (error) {
+    if (error instanceof RoutingServiceError) throw new RoutingProviderError(error.statusCode);
+    throw error;
+  }
+}
 
 export const valhallaRoutingProvider: RoutingProvider = {
-  route: calculateRoute,
-  timedRoute: calculateTimedRoute,
-  matrix: async (sources, targets) => (await calculateMatrix(sources, targets)).map((row, sourceIndex) =>
-    row.map((cell, targetIndex) => cell ? { ...cell, sourceIndex, targetIndex } : null)
+  route: (locations) => normalizeValhallaError(() => calculateRoute(locations)),
+  timedRoute: (locations) => normalizeValhallaError(() => calculateTimedRoute(locations)),
+  matrix: (sources, targets) => normalizeValhallaError(async () =>
+    (await calculateMatrix(sources, targets)).map((row, sourceIndex) =>
+      row.map((cell, targetIndex) => cell ? { ...cell, sourceIndex, targetIndex } : null)
+    )
   ),
 };

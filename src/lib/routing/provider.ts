@@ -1,22 +1,13 @@
 import "server-only";
 import type { RoutePoint, RouteResponse, TimedRouteResponse } from "@/types/route";
-import { HereRoutingError } from "./here-client.ts";
 import { hereRoutingProvider } from "./here-routing-provider.ts";
 import type { RouteMatrixCell, RoutingProvider } from "./routing-provider.ts";
-import { RoutingServiceError } from "./valhalla.ts";
 import { valhallaRoutingProvider } from "./valhalla-routing-provider.ts";
+
+export { RoutingProviderError } from "./routing-provider.ts";
 
 export type RoutingProviderName = "here" | "valhalla";
 export const DEFAULT_ROUTING_PROVIDER: RoutingProviderName = "valhalla";
-
-export class RoutingProviderError extends Error {
-  readonly statusCode: number;
-  constructor(statusCode: number) {
-    super("The routing provider could not complete the request.");
-    this.name = "RoutingProviderError";
-    this.statusCode = statusCode;
-  }
-}
 
 type RoutingEnvironment = Record<string, string | undefined>;
 
@@ -31,14 +22,7 @@ export function getRoutingProvider(environment: RoutingEnvironment = process.env
 }
 
 async function invoke<T>(operation: () => Promise<T>): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    if (error instanceof HereRoutingError || error instanceof RoutingServiceError) {
-      throw new RoutingProviderError(error.statusCode);
-    }
-    throw error;
-  }
+  return operation();
 }
 
 // Resolve on each call so tests and local development can select a provider

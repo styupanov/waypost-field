@@ -1,5 +1,5 @@
 import "server-only";
-import { calculateRoute } from "@/lib/routing/valhalla";
+import { routingProvider } from "@/lib/routing/provider";
 import { calculateRouteProgress } from "@/lib/trip/composition";
 import { findOvernightCandidates } from "@/lib/overnights/candidates";
 import type { OvernightAreaCandidate } from "@/types/overnights";
@@ -27,7 +27,7 @@ export async function integrateDefaultOvernights(draft: TripDraft, existingUserO
   });
   const baseStops = draft.stops.filter((stop) => !("type" in stop && stop.type === "overnight"));
   const stops: ItineraryStop[] = [...baseStops, ...selected].sort((left, right) => calculateRouteProgress(draft.route, left.coordinates) - calculateRouteProgress(draft.route, right.coordinates));
-  const routed = await calculateRoute([draft.origin.coordinates, ...stops.map((stop) => stop.coordinates), draft.destination.coordinates]);
+  const routed = await routingProvider.route([draft.origin.coordinates, ...stops.map((stop) => stop.coordinates), draft.destination.coordinates]);
   const rawDetour = routed.summary.durationSeconds - draft.baselineSummary.durationSeconds;
   return { ...draft, stops, route: routed.route, summary: routed.summary, overnightAlternatives: result.nights, composition: { ...draft.composition, actualDetourSeconds: Math.max(0, rawDetour), actualDetourWasClamped: rawDetour < 0, valhallaCallCount: (draft.composition.valhallaCallCount ?? 0) + result.diagnostics.valhallaCallCount + 1 } };
 }

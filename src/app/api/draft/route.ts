@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { AttractionQueryError, DatabaseConnectionError } from "@/lib/attractions/candidates";
 import { DatabaseConfigurationError } from "@/lib/db/postgres";
-import { RoutingServiceError } from "@/lib/routing/valhalla";
+import { RoutingProviderError } from "@/lib/routing/provider";
 import { composeTripDraft } from "@/lib/trip/composition";
 import { parseTripPreferences } from "@/lib/trip/preferences-validation";
 import type { DraftEndpoint, DraftOvernightStop, DraftUserAttractionStop } from "@/types/trip";
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
       console.error("Draft attraction query failed.");
       return errorResponse("ATTRACTION_QUERY_FAILED", "The personalized draft could not be generated.", 500);
     }
-    if (reason instanceof RoutingServiceError) {
+    if (reason instanceof RoutingProviderError) {
       console.error("Draft routing failed.");
       return errorResponse("ROUTING_UNAVAILABLE", "The personalized draft route could not be generated.", reason.statusCode);
     }

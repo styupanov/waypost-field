@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { authenticatedWaypostUserId } from "@/lib/auth/session";
 import { changeOvernight, OvernightEditError } from "@/lib/overnights/editing";
-import { RoutingServiceError } from "@/lib/routing/valhalla";
+import { RoutingProviderError } from "@/lib/routing/provider";
 import { assertTripOwnership, saveOwnedCurrentDraftVersion, TripPersistenceError } from "@/lib/trips/repository";
 import type { TripDraft } from "@/types/trip";
 
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof TripPersistenceError && error.code === "TRIP_NOT_FOUND") return NextResponse.json({ error: { code: "TRIP_NOT_FOUND" } }, { status: 404 });
     if (error instanceof OvernightEditError) return NextResponse.json({ error: { code: "OVERNIGHT_EDIT_CONFLICT", message: error.message } }, { status: 400 });
-    if (error instanceof RoutingServiceError) return NextResponse.json({ error: { code: "ROUTING_UNAVAILABLE" } }, { status: error.statusCode });
+    if (error instanceof RoutingProviderError) return NextResponse.json({ error: { code: "ROUTING_UNAVAILABLE" } }, { status: error.statusCode });
     console.error("Overnight change failed.", error); return NextResponse.json({ error: { code: "OVERNIGHT_EDIT_FAILED" } }, { status: 500 });
   }
 }

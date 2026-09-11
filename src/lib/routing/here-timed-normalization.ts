@@ -57,12 +57,15 @@ export function normalizeHereTimedPlanningResponse(payload: unknown, waypointCou
     const coordinates = decodeFlexiblePolyline(section.polyline);
     if (coordinates.length < 2) throw new Error("HERE returned invalid timed geometry.");
     const routeCoordinates = route.route.geometry.coordinates;
-    const duplicateBoundary = globalCoordinateCount > 0 &&
-      routeCoordinates[globalCoordinateCount - 1]?.[0] === coordinates[0][0] &&
-      routeCoordinates[globalCoordinateCount - 1]?.[1] === coordinates[0][1];
-    const sectionStart = duplicateBoundary ? globalCoordinateCount - 1 : globalCoordinateCount;
-    const sectionEnd = sectionStart + coordinates.length - 1;
-    globalCoordinateCount += coordinates.length - (duplicateBoundary ? 1 : 0);
+    const localToGlobal = coordinates.map((coordinate) => {
+      const previous = routeCoordinates[globalCoordinateCount - 1];
+      if (previous?.[0] === coordinate[0] && previous[1] === coordinate[1]) return globalCoordinateCount - 1;
+      const index = globalCoordinateCount;
+      globalCoordinateCount += 1;
+      return index;
+    });
+    const sectionStart = localToGlobal[0];
+    const sectionEnd = localToGlobal.at(-1)!;
 
     const spans = section.spans.map((span) => {
       if (!Number.isSafeInteger(span.offset) || (span.offset as number) < 0 || (span.offset as number) >= coordinates.length || !nonNegative(span.duration)) {
@@ -79,7 +82,7 @@ export function normalizeHereTimedPlanningResponse(payload: unknown, waypointCou
     if (preDuration > 0) appendSegment(timingSegments, sectionStart, sectionStart, preDuration, elapsed);
     for (const [index, span] of spans.entries()) {
       const endOffset = index + 1 < spans.length ? spans[index + 1].offset : coordinates.length - 1;
-      appendSegment(timingSegments, sectionStart + span.offset, sectionStart + endOffset, span.duration, elapsed);
+      appendSegment(timingSegments, localToGlobal[span.offset], localToGlobal[endOffset], span.duration, elapsed);
     }
     const postDuration = actionDuration(section.postActions);
     if (postDuration > 0) appendSegment(timingSegments, sectionEnd, sectionEnd, postDuration, elapsed);

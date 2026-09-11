@@ -1,17 +1,17 @@
 import "server-only";
 import { getPostgresPool } from "@/lib/db/postgres";
-import { calculateTimedRoute } from "@/lib/routing/valhalla";
+import { routingProvider } from "@/lib/routing/provider";
 import type { RoutePoint } from "@/types/route";
 import { isAttractionStop, isOvernightStop, type TripDraft } from "@/types/trip";
 import type { OvernightAreaCandidate, OvernightCandidateResponse, OvernightNightCandidates } from "@/types/overnights";
-import { ELIGIBLE_SETTLEMENT_FEATURE_CODES, MAX_OVERNIGHT_DETOUR_SECONDS, OVERNIGHT_DATABASE_SHORTLIST_LIMIT, OVERNIGHT_RESULT_LIMIT, OVERNIGHT_SPATIAL_CORRIDOR_METERS, OVERNIGHT_VALHALLA_CONCURRENCY, OVERNIGHT_VALIDATION_LIMIT, overnightTargets, scoreOvernightCandidate, timedRouteWindow } from "@/lib/overnights/planning";
+import { ELIGIBLE_SETTLEMENT_FEATURE_CODES, MAX_OVERNIGHT_DETOUR_SECONDS, OVERNIGHT_DATABASE_SHORTLIST_LIMIT, OVERNIGHT_RESULT_LIMIT, OVERNIGHT_ROUTING_CONCURRENCY, OVERNIGHT_SPATIAL_CORRIDOR_METERS, OVERNIGHT_VALIDATION_LIMIT, overnightTargets, scoreOvernightCandidate, timedRouteWindow } from "@/lib/overnights/planning";
 
 type SettlementRow = { geoname_id: string | number; name: string; feature_code: string; country_code: string; admin1_code: string | null; population: string | number | null; lat: number; lon: number; route_distance_m: number; target_distance_m: number; spatial_count: number; eligible_count: number };
 
 async function mapWithConcurrency<T, R>(values: T[], mapper: (value: T) => Promise<R>) {
   const results = new Array<R>(values.length); let next = 0;
   async function worker() { while (next < values.length) { const index = next++; results[index] = await mapper(values[index]); } }
-  await Promise.all(Array.from({ length: Math.min(OVERNIGHT_VALHALLA_CONCURRENCY, values.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(OVERNIGHT_ROUTING_CONCURRENCY, values.length) }, worker));
   return results;
 }
 
@@ -47,21 +47,26 @@ export async function findOvernightCandidates(draft: TripDraft, requestedNightIn
   const started = performance.now();
   if (!draft.multiDay.isMultiDay || draft.multiDay.selectedDays <= 1) return { nights: [], diagnostics: { structuralRouteDurationSeconds: 0, structuralRouteDistanceKm: 0, valhallaCallCount: 0, totalExecutionMilliseconds: performance.now() - started } };
   const locations = structuralLocations(draft);
-  const structural = await calculateTimedRoute(locations);
+  const structural = await routingProvider.timedRoute(locations);
   let valhallaCallCount = 1;
   const nights: OvernightNightCandidates[] = [];
   for (const [index, targetSeconds] of overnightTargets(structural.summary.durationSeconds, draft.multiDay.selectedDays).entries()) {
     if (requestedNightIndex !== undefined && requestedNightIndex !== index + 1) continue;
     const timedWindow = timedRouteWindow(structural, targetSeconds);
     const rows = await settlementsNearWindow(timedWindow.coordinates, timedWindow.target);
-    const validationRows = rows.slice(0, OVERNIGHT_VALIDATION_LIMIT);
+    const validationRows = [...new Map(
+      rows.slice(0, OVERNIGHT_VALIDATION_LIMIT).map((row) => [
+        `${row.geoname_id}:${row.lat}:${row.lon}`,
+        row,
+      ])
+    ).values()];
     const insertionIndex = structural.waypointArrivalSeconds.findIndex((seconds, waypointIndex) => waypointIndex > 0 && seconds >= targetSeconds);
     const boundedInsertionIndex = insertionIndex < 1 ? locations.length - 1 : insertionIndex;
     const evaluated = await mapWithConcurrency(validationRows, async (row) => {
       const point = { lat: row.lat, lon: row.lon };
       const candidateLocations = [...locations.slice(0, boundedInsertionIndex), point, ...locations.slice(boundedInsertionIndex)];
       const candidateIndex = boundedInsertionIndex;
-      const route = await calculateTimedRoute(candidateLocations);
+      const route = await routingProvider.timedRoute(candidateLocations);
       const detourDurationSeconds = Math.max(0, route.summary.durationSeconds - structural.summary.durationSeconds);
       const targetTimeDeviationMinutes = Math.abs(route.waypointArrivalSeconds[candidateIndex] - targetSeconds) / 60;
       const scored = scoreOvernightCandidate({ targetTimeDeviationMinutes, detourDurationSeconds, population: Number(row.population ?? 0), featureCode: row.feature_code });

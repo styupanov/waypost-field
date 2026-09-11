@@ -1,7 +1,7 @@
 import "server-only";
 import { normalizeAttractionName } from "@/lib/attractions/deduplication";
 import { findAttractionOpportunities } from "@/lib/attractions/opportunities";
-import { calculateRoute } from "@/lib/routing/valhalla";
+import { routingProvider } from "@/lib/routing/provider";
 import { calculateRouteProgress, DISTRIBUTION_BONUS_WEIGHT, MIN_PERSONALIZED_SCORE, suggestedVisitDuration, TRIP_ALTERNATIVE_LIMIT } from "@/lib/trip/composition";
 import type { PersonalizedAttractionOpportunity } from "@/types/attractions";
 import { isAttractionStop, isOvernightStop, type DraftAttractionStop, type DraftDayBoundary, type DraftDayPlan, type DraftStop, type ItineraryStop, type TripAlternative, type TripDraft } from "@/types/trip";
@@ -62,7 +62,7 @@ export async function composeDayAwareAttractions(draft: TripDraft, totalTarget: 
   for (const pair of boundaryPairs) {
     const hardStops = hardByDay.get(pair.dayIndex) ?? [];
     const locations = [pair.start.coordinates, ...hardStops.map((stop) => stop.coordinates), pair.end.coordinates];
-    const structural = await calculateRoute(locations);
+    const structural = await routingProvider.route(locations);
     const result = await findAttractionOpportunities({ locations, route: structural.route.geometry, corridorMeters: 25_000, preferences: draft.preferences }, { baselineRoute: structural, validationLimit: DAY_OPPORTUNITY_VALIDATION_LIMIT });
     const hardIds = new Set(hardStops.filter(isAttractionStop).map((stop) => stop.attractionId));
     const opportunities = result.opportunities.filter((item) => item.personalizedScore >= MIN_PERSONALIZED_SCORE && !hardIds.has(item.attraction.id)).map((item) => ({ ...item, routeProgress: calculateRouteProgress(structural.route, { lat: item.attraction.lat, lon: item.attraction.lon }), dayAdjustedScore: dayLoadAdjustedScore(item, structural.summary.durationSeconds) }));
@@ -84,7 +84,7 @@ export async function composeDayAwareAttractions(draft: TripDraft, totalTarget: 
     let validationCalls = 0;
     while (selected.length) {
       const stops = orderedDayStops(day, selected);
-      dayRoute = await calculateRoute([day.start.coordinates, ...stops.map((stop) => stop.coordinates), day.end.coordinates]);
+      dayRoute = await routingProvider.route([day.start.coordinates, ...stops.map((stop) => stop.coordinates), day.end.coordinates]);
       dayCompositionCalls += 1;
       validationCalls += 1;
       actualAutoDetourSeconds = Math.max(0, dayRoute.summary.durationSeconds - day.structural.summary.durationSeconds);
@@ -103,7 +103,7 @@ export async function composeDayAwareAttractions(draft: TripDraft, totalTarget: 
     plans.push({ dayIndex: day.dayIndex, start: day.start, end: day.end, structuralDrivingSeconds: day.structural.summary.durationSeconds, structuralDistanceKm: day.structural.summary.distanceKm, autoPoiTarget: quotas.get(day.dayIndex) ?? 0, selectedAutoPoiCount: selected.length, hardAttractionCount: day.hardStops.filter(isAttractionStop).length, autoVisitMinutesKnown: selected.reduce((sum, item) => sum + knownVisitMinutes(item.attraction.visitDuration), 0), hardVisitMinutesKnown: day.hardStops.filter(isAttractionStop).reduce((sum, item) => sum + knownVisitMinutes(item.visitDuration), 0), autoDetourBudgetSeconds: dayAutoDetourBudget(day.structural.summary.durationSeconds), actualAutoDetourSeconds, selectedAttractionIds: selected.map((item) => item.attraction.id), hardAttractionIds: day.hardStops.filter(isAttractionStop).map((item) => item.attractionId), corridorCandidateCount: day.diagnostics.corridorCandidateCount, candidatesAfterDeduplication: day.diagnostics.candidatesAfterDeduplication, opportunityShortlistSize: day.diagnostics.shortlistSize, valhallaCallCount: 1 + day.candidateRouteCalls + validationCalls });
   }
 
-  const final = await calculateRoute([draft.origin.coordinates, ...fullStops.map((stop) => stop.coordinates), draft.destination.coordinates]);
+  const final = await routingProvider.route([draft.origin.coordinates, ...fullStops.map((stop) => stop.coordinates), draft.destination.coordinates]);
   const selectedIds = new Set(plans.flatMap((plan) => plan.selectedAttractionIds));
   const alternatives = contexts.flatMap((day) => day.opportunities).filter((item) => !selectedIds.has(item.attraction.id)).filter((item, index, items) => items.findIndex((other) => other.attraction.id === item.attraction.id) === index).slice(0, TRIP_ALTERNATIVE_LIMIT).map((item) => alternative(item, final.route));
   const normalizedStops = fullStops.map((stop) => isAttractionStop(stop) ? { ...stop, routeProgress: calculateRouteProgress(final.route, stop.coordinates) } : stop);

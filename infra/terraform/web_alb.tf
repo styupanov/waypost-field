@@ -36,9 +36,43 @@ resource "aws_lb_listener" "web_http" {
   protocol          = "HTTP"
 
   default_action {
+    type = "fixed-response"
+
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Forbidden"
+      status_code  = "403"
+    }
+  }
+
+  tags = {
+    project     = "travel"
+    component   = "web"
+    environment = "dev"
+  }
+}
+
+resource "aws_lb_listener_rule" "web_cloudfront_origin" {
+  listener_arn = aws_lb_listener.web_http.arn
+  priority     = 100
+
+  action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.web.arn
   }
 
-  tags = { project = "travel", component = "web", environment = "dev" }
+  condition {
+    http_header {
+      http_header_name = "X-Waypost-Origin-Verify"
+      values = [
+        random_password.web_origin_verify.result
+      ]
+    }
+  }
+
+  tags = {
+    project     = "travel"
+    component   = "web"
+    environment = "dev"
+  }
 }

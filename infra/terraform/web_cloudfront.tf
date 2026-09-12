@@ -15,6 +15,11 @@ resource "aws_cloudfront_distribution" "web" {
     domain_name = aws_lb.web.dns_name
     origin_id   = "travel-dev-web-alb"
 
+    custom_header {
+      name  = "X-Waypost-Origin-Verify"
+      value = random_password.web_origin_verify.result
+    }
+
     custom_origin_config {
       http_port              = 80
       https_port             = 443

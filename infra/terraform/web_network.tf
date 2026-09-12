@@ -12,13 +12,20 @@ resource "aws_security_group" "web_task" {
   tags        = { project = "travel", component = "web", environment = "dev" }
 }
 
-resource "aws_vpc_security_group_ingress_rule" "web_alb_http" {
+data "aws_ec2_managed_prefix_list" "cloudfront_origin_facing" {
+  name = "com.amazonaws.global.cloudfront.origin-facing"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "web_alb_http_cloudfront" {
   security_group_id = aws_security_group.web_alb.id
-  description       = "Temporary HTTP access for the first deployment smoke test"
-  cidr_ipv4         = "0.0.0.0/0"
-  from_port         = 80
-  to_port           = 80
-  ip_protocol       = "tcp"
+
+  ip_protocol = "tcp"
+  from_port   = 80
+  to_port     = 80
+
+  prefix_list_id = data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id
+
+  description = "HTTP from CloudFront origin-facing servers"
 }
 
 resource "aws_vpc_security_group_egress_rule" "web_alb_to_task" {

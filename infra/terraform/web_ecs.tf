@@ -2,9 +2,15 @@ locals {
   web_secret_keys = [
     "DATABASE_URL",
     "AUTH_SECRET",
+
+    "AUTH_COGNITO_ID",
+    "AUTH_COGNITO_SECRET",
+    "AUTH_COGNITO_ISSUER",
+
     "HERE_API_KEY",
     "GOOGLE_MAPS_API_KEY",
     "GEMINI_API_KEY",
+
     "LOCAL_AUTH_USER_A_EMAIL",
     "LOCAL_AUTH_USER_A_PASSWORD",
     "LOCAL_AUTH_USER_A_SUBJECT",

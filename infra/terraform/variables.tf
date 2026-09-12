@@ -47,7 +47,7 @@ variable "secret_id" {
 
 variable "web_image_tag" {
   type    = string
-  default = "0c24295703b2823814a7d431e80f16d30fcc02a4"
+  default = "283e65fef402c28c492d45420ddc0bdfe27b2bd6"
 }
 
 variable "web_secret_arn" {

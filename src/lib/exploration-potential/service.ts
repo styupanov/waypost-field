@@ -2,12 +2,16 @@ import "server-only";
 import { mapRawAttractionCategory } from "../attractions/category-mapping.ts";
 import { rawExplorationPotential } from "../exploration-intelligence/model.ts";
 import { loadUserInterestProfile } from "../user-interests/repository.ts";
-import { loadPotentialInputCells } from "./repository.ts";
+import { loadExplorationIntelligenceModelVersion, loadPotentialInputCells } from "./repository.ts";
 import { normalizePotential, potentialNormalization } from "./normalization.ts";
 import type { CoverageViewport } from "../../types/coverage.ts";
 import type { ExplorationPotentialResponse } from "../../types/exploration-potential.ts";
 
 const normalizationCache = new Map<string, { lowerBound: number; upperBound: number }>();
+
+export function potentialNormalizationCacheKey(modelVersion: string, resolution: number, interests: string[]) {
+  return `${modelVersion}:${resolution}:${interests.join(",") || "generic"}`;
+}
 
 function sourceCategoriesFor(interests: string[]) {
   if (interests.length === 0) return null;
@@ -21,11 +25,14 @@ function scoreCell(cell: Awaited<ReturnType<typeof loadPotentialInputCells>>[num
 }
 
 export async function getExplorationPotential(userId: string, resolution: number, viewport: CoverageViewport): Promise<ExplorationPotentialResponse> {
-  const profile = await loadUserInterestProfile(userId);
+  const [profile, modelVersion] = await Promise.all([
+    loadUserInterestProfile(userId),
+    loadExplorationIntelligenceModelVersion(),
+  ]);
   const interests = profile.interests.map(({ category }) => category).sort();
   const sourceCategories = sourceCategoriesFor(interests);
   const mode = interests.length ? "personalized" : "generic";
-  const cacheKey = `${resolution}:${interests.join(",") || "generic"}`;
+  const cacheKey = potentialNormalizationCacheKey(modelVersion, resolution, interests);
   let bounds = normalizationCache.get(cacheKey);
   if (!bounds) {
     const population = await loadPotentialInputCells(resolution, sourceCategories);

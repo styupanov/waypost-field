@@ -1,4 +1,4 @@
-import { getResolution, latLngToCell } from "h3-js";
+import { getResolution, isValidCell, latLngToCell } from "h3-js";
 import { EXPLORATION_H3_RESOLUTIONS } from "./validation.ts";
 
 export type ExplorationSourceRow = { sourceCategory: string; latitude: number; longitude: number };
@@ -13,7 +13,7 @@ export function buildH3CategoryAggregates(rows: ExplorationSourceRow[]) {
     validGeometryRows += 1;
     for (const resolution of EXPLORATION_H3_RESOLUTIONS) {
       const h3Index = latLngToCell(row.latitude, row.longitude, resolution);
-      if (getResolution(h3Index) !== resolution) throw new Error("Generated H3 resolution mismatch.");
+      if (!isValidCell(h3Index) || getResolution(h3Index) !== resolution) throw new Error("Generated H3 cell is invalid.");
       const key = `${resolution}\u001f${h3Index}\u001f${row.sourceCategory}`;
       aggregate.set(key, (aggregate.get(key) ?? 0) + 1);
     }

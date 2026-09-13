@@ -66,11 +66,16 @@ try {
   await assert.rejects(() => disposable.query(baseline), (error) => error.code === "P0001");
   await disposable.query("ROLLBACK");
 
-  // Only the migration history may contain rows; source/user data is never copied.
-  for (const table of actual.tables.filter((table) => table.name !== "waypost_schema_migrations")) {
+  // Only migration history and the repository-defined metadata singleton may contain rows;
+  // source/user data is never copied.
+  for (const table of actual.tables.filter((table) => !["waypost_schema_migrations", "exploration_intelligence_metadata"].includes(table.name))) {
     assert.ok(/^[a-z_][a-z_0-9]*$/.test(table.name));
     assert.equal((await disposable.query(`SELECT count(*)::int AS count FROM public."${table.name}"`)).rows[0].count, 0);
   }
+  assert.deepEqual(
+    (await disposable.query("SELECT model_version,source_row_count,accepted_row_count FROM public.exploration_intelligence_metadata")).rows,
+    [{ model_version: "legacy", source_row_count: 0, accepted_row_count: 0 }]
+  );
   console.log(JSON.stringify({ event: "clean_database_verified", migrations: migrations.length,
     schemaObjects: Object.fromEntries(Object.entries(actual).map(([section, rows]) => [section, rows.length])),
     differences: 0, emptyStart: true, dataCopied: false, baselineReplay: true, incompatibleBaselineRejected: true,

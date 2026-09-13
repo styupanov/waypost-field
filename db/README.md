@@ -1,7 +1,7 @@
 # TRAVEL schema provisioning
 
 The full schema is now defined by `migrations/000_geospatial_baseline.sql` followed by
-001–016. The migration runner sorts these numbered files and records each checksum in
+001–018. The migration runner sorts these numbered files and records each checksum in
 `public.waypost_schema_migrations`. Existing 001–016 files were not rewritten.
 
 ## Missing baseline and its source
@@ -110,3 +110,8 @@ index. No S3 objects or local application data/configuration were changed.
 
 See [the ETL documentation](../etl/README.md) for processed HERE loader and SQL verification
 commands. RDS ingestion uses the same deterministic source/route key as local ingestion.
+
+Migration 018 adds the singleton `exploration_intelligence_metadata` row. Its opaque
+`model_version` identifies the active pair of H3 read-model tables. A successful rebuild
+updates the tables and version in one transaction; runtime normalization cache keys include
+the version, so no application restart or manual cache endpoint is required after rebuilding.

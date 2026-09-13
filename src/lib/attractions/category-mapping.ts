@@ -11,6 +11,7 @@ export type RawAttractionCategory =
   | "Museums"
   | "Nature & Parks"
   | "Nightlife"
+  | "Other"
   | "Outdoor Activities"
   | "Shopping"
   | "Sights & Landmarks"
@@ -35,6 +36,7 @@ export const RAW_CATEGORY_TO_INTEREST_CATEGORY: Record<
   Museums: "museums_culture",
   "Nature & Parks": "nature_scenic",
   Nightlife: null,
+  Other: null,
   "Outdoor Activities": "outdoor_adventure",
   Shopping: "shopping",
   "Sights & Landmarks": "history_landmarks",
@@ -54,4 +56,15 @@ export function mapRawAttractionCategory(
       category as RawAttractionCategory
     ] ?? null
   );
+}
+
+export function classifyRawAttractionCategory(category: string | null) {
+  if (category === null) return "missing" as const;
+  if (!Object.prototype.hasOwnProperty.call(RAW_CATEGORY_TO_INTEREST_CATEGORY, category)) {
+    return "unknown" as const;
+  }
+  if (category === "Other") return "other" as const;
+  return RAW_CATEGORY_TO_INTEREST_CATEGORY[category as RawAttractionCategory] === null
+    ? "excluded" as const
+    : "mapped" as const;
 }

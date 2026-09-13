@@ -101,6 +101,42 @@ deployments.
 
 ## Learn More
 
+## Exploration Intelligence read model
+
+`public.attractions` is the source of truth for Exploration Intelligence. The runtime map
+reads the derived `attraction_h3_category_aggregates` and `attraction_h3_cells` tables.
+The rebuild scopes source rows to `source_group='attractions'`, validates every category
+and coordinate, and generates H3 resolutions 4 through 10. Dataset growth requires no
+hardcoded count changes.
+
+Validate and aggregate locally without changing the read model:
+
+```powershell
+npm run data:validate-exploration-intelligence
+```
+
+Run the transactional local rebuild only after the dry-run passes:
+
+```powershell
+npm run data:build-exploration-intelligence
+```
+
+Known categories whose canonical mapping is `null`, including `Other`, remain in the generic
+model and do not participate in personalization. Null-category rows are reported and skipped.
+Unknown non-null categories or any invalid coordinate fail before replacement begins. A PostgreSQL advisory lock prevents
+concurrent rebuilds. Replacement, integrity checks, and the metadata version update share
+one transaction, so failure preserves the prior read model and model version. Runtime
+normalization cache keys include this version and refresh naturally after a successful build.
+
+The successful report gives source validation counts, per-resolution cell/count totals,
+the resolution-4 centroid extent, transaction status, and active model version. Verify that
+every resolution total equals `accepted_row_count` in
+`public.exploration_intelligence_metadata` before treating the build as current.
+
+```powershell
+npm run data:verify-exploration-intelligence
+```
+
 For standalone Python processing of archived HERE responses into S3 analytics records,
 see [the ETL setup, schema, and smoke-test commands](etl/README.md).
 

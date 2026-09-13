@@ -4,6 +4,15 @@ import type { CoverageViewport } from "../../types/coverage.ts";
 
 export type PotentialInputCell = { h3Index: string; counts: { sourceCategory: string; count: number }[] };
 
+export async function loadExplorationIntelligenceModelVersion() {
+  const result = await getPostgresPool().query<{ model_version: string }>(
+    "SELECT model_version FROM public.exploration_intelligence_metadata WHERE singleton_key=1"
+  );
+  const version = result.rows[0]?.model_version;
+  if (!version) throw new Error("Exploration Intelligence model metadata is missing.");
+  return version;
+}
+
 export async function loadPotentialInputCells(resolution: number, sourceCategories: string[] | null, viewport?: CoverageViewport): Promise<PotentialInputCell[]> {
   const parameters: unknown[] = [resolution];
   let categoryFilter = ""; let viewportJoin = ""; let viewportFilter = "";
